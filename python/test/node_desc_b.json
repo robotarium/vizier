@@ -1,0 +1,20 @@
+{
+  "end_point" : "b",
+  "links" :
+  {
+    "/b_sub" :
+    {
+      "requests" :
+      [
+        {
+         "type" : "GET",
+         "link" : "a/a_sub",
+         "response" : {"type" : "RESPONSE", "link" : "/response"}
+        }
+      ],
+      "links" : {}
+    }
+  },
+  "requests" : [],
+  "version" : "0.2"
+}

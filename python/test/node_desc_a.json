@@ -1,0 +1,13 @@
+{
+  "end_point" : "a",
+  "links" :
+  {
+    "/a_sub" :
+    {
+      "requests" : [],
+      "links" : {}
+    }
+  },
+  "requests" : [],
+  "version" : "0.2"
+}
