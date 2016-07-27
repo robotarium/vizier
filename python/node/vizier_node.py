@@ -1,5 +1,5 @@
 import asyncio
-import mqttInterface
+import mqtt_interface.mqttInterface as mqttInterface
 import pipeline
 import functools as ft
 import time
@@ -35,7 +35,7 @@ def send_ok_message(mqtt_client, message):
 def connect(host, port, node_descriptor):
 
     try:
-        mqtt_client = mqttInterface.MQTTInterface(port=port, host=host)
+        mqtt_client = mqtt_interface.MQTTInterface(port=port, host=host)
     except ConnectionRefusedError as e:
         print("Couldn't connect to MQTT broker at " + str(args.host) + ":" + str(args.port) + ". Exiting.")
         return -1

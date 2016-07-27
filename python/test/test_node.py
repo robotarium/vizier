@@ -1,12 +1,11 @@
 import asyncio
-import mqttInterface
-import pipeline
+import mqtt_interface.mqttInterface as mqttInterface
 import functools as ft
 import time
 import json
 import argparse
 import queue
-import vizier_node_pure_asyncio as vizier_node
+import node.vizier_node_pure_asyncio as vizier_node
 
 def main():
 
@@ -34,12 +33,12 @@ def main():
     # I hate using the UDP...let's just ignore that for now...
 
     node = vizier_node.VizierNode(args.host, args.port, node_descriptor)
-
     node.start()
-
     setup_information = node.connect()
 
     print("SETUP INFO: " + repr(setup_information))
+
+    #node.stop()
 
 if(__name__ == "__main__"):
     main()

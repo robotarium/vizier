@@ -1,6 +1,6 @@
-import pipeline
-import promise
-import asyncqueue
+import mqtt_interface.pipeline as pipeline
+import mqtt_interface.promise as promise
+import mqtt_interface.asyncqueue as asyncqueue
 import paho.mqtt.client as mqtt
 import asyncio
 import collections

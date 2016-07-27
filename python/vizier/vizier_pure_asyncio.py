@@ -1,8 +1,9 @@
-import edfg
-import node
+import vizier.edfg as edfg
+import vizier.node as node
+import vizier.colors as colors
 import asyncio
-import mqttInterface
-import pipeline
+import mqtt_interface.mqttInterface as mqttInterface
+import mqtt_interface.pipeline as pipeline
 import functools as ft
 import time
 import json
@@ -10,7 +11,7 @@ import argparse
 import queue
 import collections
 import pprint
-from utils import *
+from utils.utils import *
 
 #TODO: INCORPORATE SUB DEPENDENCY MATCHING INTO FRAMEWORK (PROBABLY SHOULD BE DONE @ GENERATION)
     #TODO: This all assumes that we've safely generated these files.  Should be fairly easy to do, actually!
@@ -36,38 +37,32 @@ def create_get_response_coroutine(mqtt_client, to_link, message):
 
     return f
 
-def create_node_descriptor_retriever_coroutine(mqtt_client, setup_channel, *links, timeout = 5, retries = 5):
+def create_node_descriptor_retriever_coroutine(mqtt_client, setup_channel, link, timeout = 5, retries = 5):
 
-    response_channels = [setup_channel + '/' + x + '/response' for x in links]
-    vizier_gets = [create_vizier_get_message(x, y) for x, y in zip(links, response_channels)]
+    response_channel = setup_channel + '/' + link + '/response'
+    vizier_get = create_vizier_get_message(link, response_channel)
 
     @asyncio.coroutine
     def f():
 
-        messages = []
-        for response_channel, link, message in zip(response_channels, links, vizier_gets):
+        yield from mqtt_client.subscribe(response_channel)
 
-            print(response_channel)
-            print(link)
+        current_retry = 0
 
-            yield from mqtt_client.subscribe(response_channel)
+        #  Try to handshake the messages
+        while True:
+            try:
+                yield from mqtt_client.send_message(link, bytearray(json.dumps(vizier_get).encode(encoding="UTF-8")))
+                network_message = yield from mqtt_client.wait_for_message(response_channel, timeout)
+                message = json.loads(network_message.payload.decode(encoding="UTF-8"))
+                break
+            except Exception as e:
+                print("Retrying node descriptor retrieval for node: " + link)
+                if(current_retry == retries):
+                    raise e
+                current_retry += 1
 
-            current_retry = 0
-
-            #  Try to handshake the messages
-            while True:
-                try:
-                    yield from mqtt_client.send_message(link, bytearray(json.dumps(message).encode(encoding="UTF-8")))
-                    network_message = yield from mqtt_client.wait_for_message(response_channel, timeout)
-                    messages.append(json.loads(network_message.payload.decode(encoding="UTF-8")))
-                    break
-                except Exception as e:
-                    print("retry")
-                    if(current_retry == retries):
-                        raise e
-                    current_retry += 1
-
-        return messages
+        return message
 
     return f
 
@@ -79,11 +74,14 @@ def create_node_handshake(mqtt_client, link, requests):
         requested_link = request["link"]
         response_channel = request["response"]["link"]
 
-        message = create_vizier_get_response(requested_link, type="data")
+        message = create_vizier_get_response(requested_link, message_type="data")
 
         coroutines.append(create_get_response_coroutine(mqtt_client, response_channel, message))
 
         print("MESSAGE: " + repr(message))
+        print("ON CHANNEL: " + repr(response_channel))
+
+    loop = asyncio.get_event_loop()
 
     def f(*responses):
 
@@ -91,7 +89,7 @@ def create_node_handshake(mqtt_client, link, requests):
 
         for coroutine in coroutines:
             try:
-                result = asyncio.get_event_loop().run_until_complete(coroutine())
+                result = loop.run_until_complete(coroutine())
                 #result = mqtt_client.run_pipeline(coroutine())
             except queue.Empty as e:
                 # If we don't get a response from the node, "throw" an error
@@ -124,10 +122,14 @@ def initialize(mqtt_client, setup_channel, *node_descriptors):
     for ndl in node_descriptor_links:
         ndrc = create_node_descriptor_retriever_coroutine(mqtt_client, setup_channel, ndl)
         try:
-            results.append(asyncio.get_event_loop().run_until_complete(ndrc()))
+            result = asyncio.get_event_loop().run_until_complete(ndrc())
+            print("GOT RESULT: " + ndl)
+            results.append(result)
         except Exception as e:
             print("Didn't receive contact from all nodes")
             raise
+
+    print("result: " + repr(results))
 
     # Do some error checking to make sure we got the right nodes
 
@@ -205,51 +207,13 @@ def construct(host, port, setup_channel, *node_descriptors):
     mqtt_client.start()
 
     all_links = initialize(mqtt_client, setup_channel, *node_descriptors)
-    print(all_links)
+    print("ALL LINKS: " + repr(all_links))
     result = assemble(mqtt_client, all_links)
 
     print(result)
 
 def main():
-    descriptor1 = \
-    {
-      "end_point" : "matlab_api",
-      "links" :
-      {
-        "/job_runner" :
-        {
-          "requests" :
-          [
-            {
-             "type" : "REQUEST",
-             "link" : "vizier/overhead_tracker/all_robot_pose_data",
-             "response" : {"type" : "RESPONSE", "link" : "/1"}
-            }
-          ],
-          "links" : {}
-        },
-        "/18:fe:34:d9:a0:91" :
-        {
-          "requests" : [],
-          "links" : {}
-        },
-      },
-      "requests" : [],
-      "version" : "0.2"
-    }
-
-    all_links = generate_links_from_descriptor(descriptor1)
-
-    print(all_links)
-
-    actual_links = {x for x in all_links.keys()}
-    required_links = {y["link"] for x in all_links.values() for y in x}
-
-    print(actual_links)
-    print(required_links)
-
-    if((actual_links & required_links) != actual_links):
-        print("Deps not satisfied: " + repr((required_links - actual_links)))
+    pass
 
 if(__name__ == "__main__"):
     main()

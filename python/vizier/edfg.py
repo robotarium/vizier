@@ -1,9 +1,8 @@
-import graph
-import algorithms
+import graph.graph as graph
+import graph.algorithms as algorithms
 import concurrent.futures
 import functools as ft
-from colors import colors
-
+from vizier.colors import *
 
 #TODO: Groups, etc
 

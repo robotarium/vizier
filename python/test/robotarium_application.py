@@ -1,12 +1,11 @@
 import asyncio
-import mqttInterface
-import pipeline
+import mqtt_interface.mqttInterface as mqttInterface
 import functools as ft
 import time
 import json
 import argparse
 import queue
-import vizier_pure_asyncio as vizier
+import vizier.vizier_pure_asyncio as vizier
 
 def main():
 

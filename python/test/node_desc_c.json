@@ -9,8 +9,13 @@
         {
          "type" : "GET",
          "link" : "b/b_sub",
-         "response" : {"type" : "RESPONSE", "link" : "/response"}
-        }
+         "response" : {"type" : "RESPONSE", "link" : "/get_b/response"}
+       },
+       {
+        "type" : "GET",
+        "link" : "a/a_sub",
+        "response" : {"type" : "RESPONSE", "link" : "/get_a/response"}
+       }
       ],
       "links" : {}
     }
