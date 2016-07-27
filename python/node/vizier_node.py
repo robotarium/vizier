@@ -1,99 +1,93 @@
 import asyncio
 import mqtt_interface.mqttInterface as mqttInterface
-import pipeline
+import mqtt_interface.pipeline as pipeline
 import functools as ft
-import time
 import json
-import argparse
 import queue
+from utils.utils import *
 
-#def handle source nodes
+def create_wait_for_message_and_retry_coroutine(mqtt_client, link, timeout=10, retries=5):
 
-@asyncio.coroutine
-def subscribe_and_return(client, channel):
-    yield from client.subscribe(channel)
-    return channel
+    @asyncio.coroutine
+    def f():
 
-@asyncio.coroutine
-def send_and_return(mqtt_client, channel, message):
-    yield from mqtt_client.send_message(channel, message)
-    return channel
+        yield from mqtt_client.subscribe(link)
 
-@asyncio.coroutine
-def parse_setup_message(message):
-    decoded_message = json.loads(message.payload.decode(encoding="UTF-8"))
-    return decoded_message
+        current_retry = 0
 
-@asyncio.coroutine
-def send_ok_message(mqtt_client, message):
-    decoded_message = json.loads(message.payload.decode(encoding="UTF-8"))
-    response_channel = decoded_message["response"]
-    #print("Received setup message: " + repr(decoded_message))
-    yield from mqtt_client.send_message(response_channel, json.dumps({"status" : "running", "error" : "none"}))
-    return decoded_message
+        #  Try to handshake the messages
+        while True:
+            try:
+                network_message = yield from mqtt_client.wait_for_message(link, timeout)
+                message = json.loads(network_message.payload.decode(encoding="UTF-8"))
+                break
+            except Exception as e:
+                print("retry")
+                if(current_retry == retries):
+                    raise e
+                current_retry += 1
 
-def connect(host, port, node_descriptor):
+        return message
 
-    try:
-        mqtt_client = mqtt_interface.MQTTInterface(port=port, host=host)
-    except ConnectionRefusedError as e:
-        print("Couldn't connect to MQTT broker at " + str(args.host) + ":" + str(args.port) + ". Exiting.")
-        return -1
+    return f
 
-    # Start the MQTT interface
-    mqtt_client.start()
+# QUICK CURRY FUNCTION FOR HANDLING GET REQUESTS ON CHANNELS
+def _curry_get_message_handler(mqtt_client, info):
 
-    # First, we need to grab all the node descriptors
+    def f(network_message):
+        try:
+            network_message = json.loads(network_message.payload.decode(encoding="UTF-8"))
+        except Exception as e:
+            print("Got malformed network message")
 
-    # DON'T FORGET TO UNSUBSCRIBE FROM CHANNELS
-    setup_channel = node_descriptor["meta"]["mqtt_info"]["setup_channel"] + "/" + node_descriptor["attributes"]["attribute"]
-    response_channel = node_descriptor["response"]
+        response_channel = network_message["response"]["link"]
+        mqtt_client.send_message2(response_channel, json.dumps(info))
 
-    #print("Sending on : " + setup_channel)
-    #print("Listening on: " + response_channel)
+    return f
 
-    pipe = pipeline.construct(mqtt_client.subscribe,
-                              ft.partial(mqtt_client.send_message, setup_channel, json.dumps(node_descriptor)),
-                              ft.partial(mqtt_client.wait_for_message, response_channel),
-                              ft.partial(send_ok_message, mqtt_client))
+class VizierNode:
 
-    setup_info = mqtt_client.run_pipeline(pipe(response_channel))
+    def __init__(self, broker_host, broker_port, node_descriptor):
+        self.mqtt_client = mqttInterface.MQTTInterface(port=broker_port, host=broker_host)
+        self.node_descriptor = node_descriptor
+        self.end_point = node_descriptor["end_point"]
+        self.expanded_links = generate_links_from_descriptor(node_descriptor)
+        self.links = {}
+        self.host = broker_host
+        self.port = broker_port
 
-    mqtt_client.stop()
+    def offer(self, link, info):
+        self.links[link] = info;
+        self.mqtt_client.subscribe_with_callback(link, _curry_get_message_handler(self.mqtt_client, info))
 
-    return setup_info
+    def start(self):
+        self.mqtt_client.start()
 
+    def stop(self):
+        self.mqtt_client.stop()
 
-def main():
+    def connect(self):
 
-    parser = argparse.ArgumentParser()
-    #TODO: Add support for separate experiments
-    #parser.add_argument("experimend_id", type=int, help="The ID of the experiment")
-    parser.add_argument("node_descriptor", help=".json file node information")
-    parser.add_argument("-port", type=int, help="MQTT Port", default=8080)
-    parser.add_argument("-host", help="MQTT Host IP", default="localhost")
+        setup_channel = 'vizier/setup'
 
-    args = parser.parse_args()
+        loop = asyncio.get_event_loop()
 
-    print(args)
+        for requests in self.expanded_links.values():
+            for request in requests:
+                print("Subbing to : " + request["response"]["link"])
+                loop.run_until_complete(self.mqtt_client.subscribe(request["response"]["link"]))
 
-    #Ensure that we can open the nodes file
+        #Subscribe to response channels, then offer up our node descriptor so that the server can grab it
 
-    node_descriptors = None
-    try:
-        f = open(args.node_descriptor, 'r')
-        node_descriptors = json.load(f)
-        f.close()
-    except Exception as e:
-        print(repr(e))
-        print("Couldn't open given node file " + args.node_descriptor)
-        return -1
+        self.offer(self.end_point + '/node_descriptor', self.node_descriptor)
+        print("OFFERING NODE DESCRIPTOR ON :" + self.end_point + '/node_descriptor')
 
-    # Ensure that information in our configuration file is accurate
+        #Get final setup information from the server
+        requested_links = [x["link"] for y in self.expanded_links.values() for x in y ]
+        coroutines = [create_wait_for_message_and_retry_coroutine(self.mqtt_client, x["response"]["link"])() for y in self.expanded_links.values() for x in y ]
 
-    # I hate using the UDP...let's just ignore that for now...
+        result = loop.run_until_complete(asyncio.gather(*coroutines))
 
-    # Attempt to connect to MQTT broker
+        setup_information = {x : y["body"] for x, y in zip(requested_links, result)}
 
-if(__name__ == "__main__"):
-    main()
+        return setup_information
