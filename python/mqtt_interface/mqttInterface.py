@@ -13,18 +13,20 @@ FutureTask = collections.namedtuple('FutureTask', ['f', 'promise'])
 
 class MQTTInterface:
 
-    def __init__(self, port=1884, keepAlive=60, host="localhost"):
+    def __init__(self, port=1884, keep_alive=60, host="localhost"):
             #Set up MQTT client
 
+            self.host = host
+            self.port = port
+            self.keep_alive = keep_alive
+
             #Numer of workers must be equal to the number of "locking" queues + 2...
-            self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=3)
+            self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=5)
             self.futures = []
 
             self.clientQueue = queue.Queue()
             self.client = mqtt.Client()
-            self.client.on_connect = self.on_connect
             self.client.on_message = self.on_message
-            self.client.connect(host, port, keepAlive)
 
             #I shouldn't need a lock for this...
             self.channels = {}
@@ -32,11 +34,13 @@ class MQTTInterface:
 
             self.loop = asyncio.get_event_loop()
 
-    def on_connect(self, client, userdata, flags, rc):
-        print("Successfully connected to MQTT broker with result code "+str(rc))
-        # Subscribing in on_connect() means that if we lose the connection and
-        # reconnect then subscriptions will be renewed.
-        #client.subscribe("$SYS/#")
+    def create_on_connect(self, promise):
+
+        def on_connect(client, userdata, flags, rc):
+            promise.fulfill(True)
+            pass
+
+        return on_connect
 
     # The callback for when a PUBLISH message is received from the server.
     def on_message(self, client, userdata, msg):
@@ -150,8 +154,22 @@ class MQTTInterface:
 
     def start(self):
 
+        #Wait for client to connect before proceeding
+        p = promise.Promise(executor=self.executor)
+        self.client.on_connect = self.create_on_connect(p)
+
+        #Attempt to connect the client to the specified broker
+        try:
+            self.client.connect(self.host, self.port, self.keep_alive)
+        except Exception as e:
+            print("MQTT client couldn't connect to broker at host: " + repr(self.host) + " port: " + repr(self.port))
+            raise e
+
         # Starts MQTT client in background thread
         self.client.loop_start()
+
+        #Block on connection resolving
+        p.result()
 
         #Loop to handle modifications to client
         def clientQ():

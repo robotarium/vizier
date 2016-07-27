@@ -6,6 +6,8 @@ import json
 import queue
 from utils.utils import *
 
+#TODO: Add final intialization stage and heartbeat
+
 def create_wait_for_message_and_retry_coroutine(mqtt_client, link, timeout=10, retries=5):
 
     @asyncio.coroutine
@@ -74,7 +76,6 @@ class VizierNode:
 
         for requests in self.expanded_links.values():
             for request in requests:
-                print("Subbing to : " + request["response"]["link"])
                 loop.run_until_complete(self.mqtt_client.subscribe(request["response"]["link"]))
 
         #Subscribe to response channels, then offer up our node descriptor so that the server can grab it

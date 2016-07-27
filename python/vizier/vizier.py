@@ -13,10 +13,6 @@ import collections
 import pprint
 from utils.utils import *
 
-#TODO: INCORPORATE SUB DEPENDENCY MATCHING INTO FRAMEWORK (PROBABLY SHOULD BE DONE @ GENERATION)
-    #TODO: This all assumes that we've safely generated these files.  Should be fairly easy to do, actually!
-    #TODO: I should write a little script to generate these files and check everything
-
 #TODO: Check the prior node produces the correct dependencies.  Should be a fairly minor modification
 
 #TODO: AFTER INITIALIZATION, WE CAN JUST MAKE CHANNELS THAT THE NODE'S DATA CAN BE REQUESTED FROM

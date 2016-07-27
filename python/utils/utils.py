@@ -29,20 +29,8 @@ def create_vizier_get_response(body, message_type="data"):
 
     return {"type" : message_type, "body" : body}
 
-
-#Put this somewhere intelligent
-class bcolors:
-    HEADER = '\033[95m'
-    OKBLUE = '\033[94m'
-    OKGREEN = '\033[92m'
-    WHITE = '\033[97m'
-    WARNING = '\033[93m'
-    FAIL = '\033[91m'
-    ENDC = '\033[0m'
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
-
 def is_link_subset_of(path, link):
+    """ Checks if a link is a subset of the current path (directory wise) """
 
     if(len(path) == 0):
         return True
@@ -57,6 +45,9 @@ def is_link_subset_of(path, link):
     return True
 
 def expand_path(path, link):
+    """
+    Expands path to absolute or local
+    """
     if(link[0] == '/'):
         return path + link
     else:
@@ -64,6 +55,10 @@ def expand_path(path, link):
 
 
 def generate_links_from_descriptor(descriptor):
+    """
+    Recursively parses a descriptor file, expanding links as it goes.  This function will
+    also check to ensure that all specified paths are valid, with respect to the local node.
+    """
     def parse_links(path, link, body):
 
         link = expand_path(path, link)
