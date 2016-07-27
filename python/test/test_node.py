@@ -5,7 +5,7 @@ import time
 import json
 import argparse
 import queue
-import node.vizier_node_pure_asyncio as vizier_node
+import node.vizier_node as vizier_node
 
 def main():
 

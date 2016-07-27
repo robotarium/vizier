@@ -5,7 +5,7 @@ import time
 import json
 import argparse
 import queue
-import vizier.vizier_pure_asyncio as vizier
+import vizier.vizier as vizier
 
 def main():
 
