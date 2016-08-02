@@ -35,7 +35,9 @@ class MQTTInterface:
             self.loop = asyncio.get_event_loop()
 
     def create_on_connect(self, promise):
-
+        """
+        Higher order function that creates a callback function to handle MQTT server connection
+        """
         def on_connect(client, userdata, flags, rc):
             promise.fulfill(True)
             pass
@@ -44,7 +46,9 @@ class MQTTInterface:
 
     # The callback for when a PUBLISH message is received from the server.
     def on_message(self, client, userdata, msg):
-
+        """
+        Callback handling messages from the client.  Either puts the message into a callback or a channel
+        """
         if(msg.topic in self.callbacks):
             self.callbacks[msg.topic](msg)
 
@@ -73,6 +77,10 @@ class MQTTInterface:
     #Create subscribe queue method and subscribe callback method
 
     def subscribe_with_callback(self, channel, callback):
+        """
+        Thread safe
+        Subscribes to a channel with a callback.  All messages to that channel will be passed into the callback
+        """
         #Update should be thread safe...
         self.callbacks.update({channel: callback})
 
@@ -88,6 +96,10 @@ class MQTTInterface:
 
     @asyncio.coroutine
     def subscribe(self, channel):
+        """
+        Thread safe
+        A subscribe routine that yields a queue to which all subsequent messages to the given topic will be passed
+        """
         #Should be thread safe...
         self.channels.update({channel: asyncqueue.AsyncQueue(executor=self.executor)})
 
@@ -101,8 +113,32 @@ class MQTTInterface:
         if not result:
             print("Client didn't subscribe successfully...")
 
+    def subscribe2(self, channel):
+        """
+        Thread safe
+        A subscribe routine that yields a queue to which all subsequent messages to the given topic will be passed
+        """
+        #Should be thread safe...
+        new_queue = asyncqueue.AsyncQueue(executor=self.executor)
+        self.channels.update({channel: new_queue})
+
+        def clientModification():
+            self.client.subscribe(channel)
+            return True
+
+        prom = self._modify_client_sync(clientModification)
+        result = prom.result()
+
+        if not result:
+            print("Client didn't subscribe successfully...")
+
+        return (result, new_queue)
+
     @asyncio.coroutine
     def unsubscribe(self, channel):
+        """
+        Unsubscribes from a particular channel
+        """
         def clientModification():
             self.client.unsubscribe(channel)
             return True
@@ -116,6 +152,25 @@ class MQTTInterface:
         #Remove duplex channel from list of entities.  Should be thread-safe...
         self.channels.pop(channel, None)
 
+    def unsubscribe2(self, channel):
+        """
+        Unsubscribes from a particular channel
+        """
+        def clientModification():
+            self.client.unsubscribe(channel)
+            return True
+
+        prom = self._modify_client_sync(clientModification)
+        result = prom.result()
+
+        if not result:
+            print("Didn't unsubscribe successfully...")
+
+        #Remove duplex channel from list of entities.  Should be thread-safe...
+        self.channels.pop(channel, None)
+
+        return result
+
     @asyncio.coroutine
     def wait_for_message(self, channel, timeout=60):
         message = yield from self.channels[channel].async_get(self.loop, timeout=timeout)
@@ -123,13 +178,17 @@ class MQTTInterface:
 
     @asyncio.coroutine
     def send_message(self, channel, message):
-
+        """
+        Thread safe
+        Asyncio-compatible
+        Sends a message on a particlar channel
+        """
         def clientModification():
             self.client.publish(channel, message)
             return True
 
         prom = self._modifyClient(clientModification)
-        result = prom.result()
+        result = yield from prom.result()
 
         if not result:
             print("Didn't send message successfully...")
@@ -174,9 +233,7 @@ class MQTTInterface:
         #Loop to handle modifications to client
         def clientQ():
             while True:
-
                 result = self.clientQueue.get()
-
                 if result is None:
                     break
 
@@ -186,7 +243,6 @@ class MQTTInterface:
                 except Exception as e:
                     print("Encountered exception " + repr(e) + " in clientQ")
                     result.promise.fulfill(e)
-
 
             return True
 
@@ -203,6 +259,5 @@ class MQTTInterface:
         if not any(results):
             #If any of the results are NOT true
             print("Encountered error handling a future.  You should inspect the futures array to ensure everything is functioning")
-
 
         self.executor.shutdown()

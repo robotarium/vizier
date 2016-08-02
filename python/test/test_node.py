@@ -28,10 +28,6 @@ def main():
         print("Couldn't open given node file " + args.node_descriptor)
         return -1
 
-    # Ensure that information in our configuration file is accurate
-
-    # I hate using the UDP...let's just ignore that for now...
-
     node = vizier_node.VizierNode(args.host, args.port, node_descriptor)
     node.start()
     setup_information = node.connect()
