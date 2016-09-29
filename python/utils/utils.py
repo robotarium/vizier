@@ -5,7 +5,7 @@ GetResponseTypeError = ValueError
 
 def create_vizier_error_message(error_string):
     """
-    Create
+    Create a vizier error message for use when dependencies are not met, etc.
     """
 
     return {"type" : "ERROR", "message" : error_string}

@@ -24,9 +24,6 @@ class EDFGBuilder:
         Adds a node to the node graph
         """
         #Ensure that all dependencies are in the current node graph
-        #TODO: Figure out if we need this information...
-        # for d in node.deps:
-        #     assert(self.graph.inGraph(d))
 
         self.graph.addVertex(node.name)
 
@@ -95,7 +92,6 @@ class EDFG:
 
                 for v in vs:
 
-
                     if(pretty_print):
                         print((' ' * level) + "@[" + repr(level) + "]: " + "EDFG executing node: " + v, end=" ", flush=True)
 
@@ -105,11 +101,6 @@ class EDFG:
                     #Wrap calling function and splaterino args
                     futures[v] = executor.submit(lambda: self.nodes[v].xform(*args))
                     futures[v].result()
-
-                    #I may need to move this after...
-                    #if(self.nodes[v].resolution != None):
-                        #Don't do anything for now...
-                        #futures[v].add_done_callback(lambda x: self.nodes[v].resolution(x.result()))
 
                 #Wait on all results before continuing execution.  Merge previous results
                 outputs.update({node: future.result() for (node, future) in futures.items()})

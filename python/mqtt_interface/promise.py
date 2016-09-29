@@ -13,7 +13,7 @@ def _getOrThrowException(q):
 
 class Promise:
 
-    def __init__(self, executor=concurrent.futures.ThreadPoolExecutor):
+    def __init__(self, executor=concurrent.futures.ThreadPoolExecutor(max_workers=1)):
         self.pQueue = queue.Queue(1)
         self.future = executor.submit(functools.partial(_getOrThrowException, self.pQueue))
 
@@ -22,7 +22,7 @@ class Promise:
 
     def result(self):
         return self.future.result()
-        
+
 
 class AsyncPromise:
 

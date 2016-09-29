@@ -12,7 +12,9 @@ import queue
 FutureTask = collections.namedtuple('FutureTask', ['f', 'promise'])
 
 class MQTTInterface:
-
+    """
+    This is a wrapper around the Paho MQTT interface with enhanced functionality
+    """
     def __init__(self, port=1884, keep_alive=60, host="localhost"):
             #Set up MQTT client
 
@@ -68,6 +70,9 @@ class MQTTInterface:
         return prom
 
     def _modify_client_sync(self, f):
+        """
+        Modifies the client without asyncio.
+        """
         #A promise is really just a queue of size 1
         prom = promise.Promise(executor=self.executor)
         self.clientQueue.put(FutureTask(f, prom))
@@ -173,6 +178,9 @@ class MQTTInterface:
 
     @asyncio.coroutine
     def wait_for_message(self, channel, timeout=60):
+        """
+        Asyncio coroutine that waits for a particular message from a channel.
+        """
         message = yield from self.channels[channel].async_get(self.loop, timeout=timeout)
         return message
 
@@ -207,9 +215,6 @@ class MQTTInterface:
     def run_pipeline(self, pipeline, exeption_handler=None):
         self.loop.set_exception_handler(exeption_handler)
         return self.loop.run_until_complete(pipeline)
-
-    def run_pipeline_async(self, pipieline, exception_handler=None):
-        self.loop.set_exception_handler(exception_handler)
 
     def start(self):
 

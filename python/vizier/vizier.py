@@ -18,7 +18,10 @@ from utils.utils import *
 #TODO: AFTER INITIALIZATION, WE CAN JUST MAKE CHANNELS THAT THE NODE'S DATA CAN BE REQUESTED FROM
 
 def create_get_response_coroutine(mqtt_client, to_link, message):
-
+    """
+    This function creates and returns an asyncio coroutine that creates a JSON message and
+    sends it to the received vizier URI link.
+    """
     @asyncio.coroutine
     def f():
 
@@ -34,7 +37,11 @@ def create_get_response_coroutine(mqtt_client, to_link, message):
     return f
 
 def create_node_descriptor_retriever_coroutine(mqtt_client, setup_channel, link, timeout = 5, retries = 5):
-
+    """
+    This function creates an asyncio that handles the retrieval of node descriptors from various corresponding nodes.
+    timeout: how long the function waits for a response per retry; so the total time takes timeout * retries.
+    retries: how many times to retry waiting for a node descriptor.  In practice, I've actually never had to retry.
+    """
     response_channel = setup_channel + '/' + link + '/response'
     vizier_get = create_vizier_get_message(link, response_channel)
 
@@ -63,7 +70,10 @@ def create_node_descriptor_retriever_coroutine(mqtt_client, setup_channel, link,
     return f
 
 def create_node_handshake(mqtt_client, link, requests):
-
+    """
+    This function creates and returns a function for use in the EDFG that handles handshaking nodes after startup.
+    That is, repeatedly calls 'create_get_response_coroutine' to realize all the needed handshakes.
+    """
     coroutines = []
 
     for request in requests:
@@ -79,14 +89,11 @@ def create_node_handshake(mqtt_client, link, requests):
 
     loop = asyncio.get_event_loop()
 
+    # Responses are responses from the dependencies for this node.
     def f(*responses):
-
-        # responses are the links that this node needs to start
-
         for coroutine in coroutines:
             try:
                 result = loop.run_until_complete(coroutine())
-                #result = mqtt_client.run_pipeline(coroutine())
             except queue.Empty as e:
                 # If we don't get a response from the node, "throw" an error
                 print("DIDN'T GET A RESPONSE")
@@ -105,13 +112,10 @@ def create_node_listener(received_nodes):
 
 def initialize(mqtt_client, setup_channel, *node_descriptors):
     """
-    Constructs a network given the nodes
+    Constructs a network given the nodes in node descriptors.
     """
 
-    # First, we need to grab all the node descriptors
-    # ndrs = [create_node_descriptor_retriever_coroutine(mqtt_client, nd + "/node_descriptor", setup_channel) for nd in node_descriptors]
-    # pipe = pipeline.construct(ndrs)
-
+    # Retrieve all the node descriptor from the supplied ones that we're expecting
     node_descriptor_links = [nd + "/node_descriptor" for nd in node_descriptors]
 
     results = []
@@ -153,7 +157,8 @@ def initialize(mqtt_client, setup_channel, *node_descriptors):
 
     print(all_links)
 
-    # Ensure that all dependencies have been met
+    # Ensure that all dependencies have been met.  This is just error checking
+    # make sure that all the dependencies are satisfied.
     actual_links = {x for x in all_links.keys()}
     required_links = {y["link"] for x in all_links.values() for y in x}
 
@@ -169,26 +174,28 @@ def initialize(mqtt_client, setup_channel, *node_descriptors):
     return all_links
 
 def assemble(mqtt_client, node_links):
-    #Don't need this for initialization
-    app_builder = edfg.EDFGBuilder()
+    """
+    Assemble assembles the vizier network, connecting all the required nodes to their specified dependencies.  In particular,
+    it handshakes all the nodes with their dependencies to make sure that they're properly registered on the network.
+    """
+    edfg_builder = edfg.EDFGBuilder()
 
     for link in node_links:
-        app_builder.with_node(node.Node(link, [x["link"] for x in node_links[link]], create_node_handshake(mqtt_client, link, node_links[link])))
+        edfg_builder.with_node(node.Node(link, [x["link"] for x in node_links[link]], create_node_handshake(mqtt_client, link, node_links[link])))
 
-    app_builder.with_node(node.Node("all_results", node_links.keys(), create_node_listener(node_links.keys())))
+    # This is an extra node to print out all the nodes that have been received.
+    edfg_builder.with_node(node.Node("all_results", node_links.keys(), create_node_listener(node_links.keys())))
 
-    app = app_builder.build()
+    # This builds the
+    edfg_ = edfg_builder.build()
 
-    return(app.execute(pretty_print = True))
+    # Return the result of executing the EDFG with pretty printing for debugging
+    return(edfg_.execute(pretty_print = True))
 
 def execute():
     pass
 
 def construct(host, port, setup_channel, *node_descriptors):
-
-    # WE NOW HAVE THREE PHASES
-    # CONSTRUCT -> COMPILE -> EXECUTE
-
 
     #TODO: I need to build all the dependencies up front to make it more obvious what's happening
 
@@ -202,6 +209,7 @@ def construct(host, port, setup_channel, *node_descriptors):
     # Start the MQTT interface
     mqtt_client.start()
 
+    # PErform the initialize -> assemble -> TODO: contstruct steps
     all_links = initialize(mqtt_client, setup_channel, *node_descriptors)
     print("ALL LINKS: " + repr(all_links))
     result = assemble(mqtt_client, all_links)
