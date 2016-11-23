@@ -8,14 +8,21 @@ import concurrent.futures
 import functools
 import queue
 
+# For logging
+import logging
+import logging.handlers as handlers
+
 #Some named tuples to make things a bit more readable
 FutureTask = collections.namedtuple('FutureTask', ['f', 'promise'])
+
+# Filter for logging
+
 
 class MQTTInterface:
     """
     This is a wrapper around the Paho MQTT interface with enhanced functionality
     """
-    def __init__(self, port=1884, keep_alive=60, host="localhost"):
+    def __init__(self, port=1884, keep_alive=60, host="localhost", logging_config = None):
             #Set up MQTT client
 
             self.host = host
@@ -36,12 +43,31 @@ class MQTTInterface:
 
             self.loop = asyncio.get_event_loop()
 
+            # For logging
+
+            if(logging_config):
+                logging.configDict(logging_config)
+                self.logger = logging.getLogger(__name__)
+            else:
+                self.logger = logging.getLogger(__name__)
+                self.logger.setLevel(logging.DEBUG)
+
+                formatter = logging.Formatter('%(asctime)s:%(levelname)s:%(message)s')
+
+                rfh = handlers.RotatingFileHandler(__name__+'.log')
+                rfh.setLevel(logging.DEBUG)
+                rfh.setFormatter(formatter)
+
+                self.logger.addHandler(rfh)
+
+
     def create_on_connect(self, promise):
         """
         Higher order function that creates a callback function to handle MQTT server connection
         """
         def on_connect(client, userdata, flags, rc):
             promise.fulfill(True)
+            self.logger.info("Client successfully connected to server.")
             pass
 
         return on_connect
@@ -97,7 +123,7 @@ class MQTTInterface:
         result = prom.result()
 
         if not result:
-            print("Client didn't subscribe successfully...")
+            self.logger.error("Client couldn't successfully subscribe to topic: " + channel)
 
     @asyncio.coroutine
     def subscribe(self, channel):
@@ -116,7 +142,7 @@ class MQTTInterface:
         result = yield from prom.result()
 
         if not result:
-            print("Client didn't subscribe successfully...")
+            self.logger.error("Client couldn't successfully subscribe to topic: " + channel)
 
     def subscribe2(self, channel):
         """
@@ -135,7 +161,7 @@ class MQTTInterface:
         result = prom.result()
 
         if not result:
-            print("Client didn't subscribe successfully...")
+            self.logger.error("Client couldn't successfully subscribe to topic: " + channel)
 
         return (result, new_queue)
 
@@ -152,7 +178,7 @@ class MQTTInterface:
         result = yield from prom.result()
 
         if not result:
-            print("Didn't unsubscribe successfully...")
+            self.logger.error("Client couldn't successfully unsubscribe to topic: " + channel)
 
         #Remove duplex channel from list of entities.  Should be thread-safe...
         self.channels.pop(channel, None)
@@ -169,7 +195,7 @@ class MQTTInterface:
         result = prom.result()
 
         if not result:
-            print("Didn't unsubscribe successfully...")
+            self.logger.error("Client couldn't successfully unsubscribe to topic: " + channel)
 
         #Remove duplex channel from list of entities.  Should be thread-safe...
         self.channels.pop(channel, None)
@@ -199,7 +225,7 @@ class MQTTInterface:
         result = yield from prom.result()
 
         if not result:
-            print("Didn't send message successfully...")
+            self.logger.error("Client couldn't successfully send message to topic: " + channel)
 
     def send_message2(self, channel, message):
         def clientModification():
@@ -210,7 +236,7 @@ class MQTTInterface:
         result = prom.result()
 
         if not result:
-            print("Didn't send message successfully...")
+            self.logger.error("Client couldn't successfully send message to topic: " + channel)
 
     def run_pipeline(self, pipeline, exeption_handler=None):
         self.loop.set_exception_handler(exeption_handler)
@@ -226,7 +252,7 @@ class MQTTInterface:
         try:
             self.client.connect(self.host, self.port, self.keep_alive)
         except Exception as e:
-            print("MQTT client couldn't connect to broker at host: " + repr(self.host) + " port: " + repr(self.port))
+            self.logger.error("MQTT client couldn't connect to broker at host: " + repr(self.host) + " port: " + repr(self.port))
             raise e
 
         # Starts MQTT client in background thread

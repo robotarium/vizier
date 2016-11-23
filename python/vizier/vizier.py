@@ -4,6 +4,7 @@ import vizier.colors as colors
 import asyncio
 import mqtt_interface.mqttInterface as mqttInterface
 import mqtt_interface.pipeline as pipeline
+import pprint
 import functools as ft
 import time
 import json
@@ -12,6 +13,25 @@ import queue
 import collections
 import pprint
 from utils.utils import *
+
+### For logging ###
+import logging
+import logging.handlers as handlers
+
+### LOGGING ###
+
+# TODO: (PAUL) This should probably be done in a better way
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+formatter = logging.Formatter('%(asctime)s:%(levelname)s:%(message)s')
+
+rfh = handlers.RotatingFileHandler(__name__+'.log')
+rfh.setLevel(logging.DEBUG)
+rfh.setFormatter(formatter)
+
+logger.addHandler(rfh)
 
 #TODO: Check the prior node produces the correct dependencies.  Should be a fairly minor modification
 
@@ -60,7 +80,7 @@ def create_node_descriptor_retriever_coroutine(mqtt_client, setup_channel, link,
                 message = json.loads(network_message.payload.decode(encoding="UTF-8"))
                 break
             except Exception as e:
-                print("Retrying node descriptor retrieval for node: " + link)
+                logger.warning("Retrying node descriptor retrieval for node: " + link)
                 if(current_retry == retries):
                     raise e
                 current_retry += 1
@@ -84,23 +104,32 @@ def create_node_handshake(mqtt_client, link, requests):
 
         coroutines.append(create_get_response_coroutine(mqtt_client, response_channel, message))
 
-        print("MESSAGE: " + repr(message))
-        print("ON CHANNEL: " + repr(response_channel))
+        logger.info("Creating node handshake on channel %s : message : %s", repr(message), repr(response_channel))
 
     loop = asyncio.get_event_loop()
 
     # Responses are responses from the dependencies for this node.
     def f(*responses):
-        for coroutine in coroutines:
-            try:
-                result = loop.run_until_complete(coroutine())
-            except queue.Empty as e:
-                # If we don't get a response from the node, "throw" an error
-                print("DIDN'T GET A RESPONSE")
-                #result = {"status" : "error", "error" : "Couldn't initialize node: " + node_id}
 
-        return link
+        result = None
 
+        if(any(filter(lambda x: x["type"] == "ERROR", responses))):
+            # Handle the error
+
+            result = utils.create_vizier_error_message([])
+
+            for r in responses:
+                if(r["type"] == "ERROR"):
+                    result["message"] = result["message"] + r["message"]
+        else:
+            for coroutine in coroutines:
+                try:
+                    result = loop.run_until_complete(coroutine())
+                except queue.Empty as e:
+                    # If we don't get a response from the node, "throw" an error
+                    result = utils.create_vizier_error_message("Couldn't initialize node " + link)
+
+        return {"type": "OK"}
     return f
 
 def create_node_listener(received_nodes):
@@ -123,13 +152,13 @@ def initialize(mqtt_client, setup_channel, *node_descriptors):
         ndrc = create_node_descriptor_retriever_coroutine(mqtt_client, setup_channel, ndl)
         try:
             result = asyncio.get_event_loop().run_until_complete(ndrc())
-            print("GOT RESULT: " + ndl)
+            logger.info("Receive node descriptor link: %s", ndl)
             results.append(result)
         except Exception as e:
-            print("Didn't receive contact from all nodes")
+            logger.error("Didn't receive contact from all nodes")
             raise
 
-    print("result: " + repr(results))
+    logger.info("Resulting link structure is: %s", repr(results))
 
     # Do some error checking to make sure we got the right nodes
 
@@ -138,9 +167,10 @@ def initialize(mqtt_client, setup_channel, *node_descriptors):
     compare = lambda x, y: collections.Counter(x) == collections.Counter(y)
 
     if not set(received_nodes) == set(node_descriptors):
-        print("Recieved nodes not the same as supplied node descriptors")
-        print("Received nodes: " + repr(received_nodes))
-        print("Supplied nodes: " + repr(node_descriptors))
+        logger.error("Received nodes (%s) not the same as supplied node descriptors (%s)", repr(received_nodes), repr(node_descriptors))
+        # print("Recieved nodes not the same as supplied node descriptors")
+        # print("Received nodes: " + repr(received_nodes))
+        # print("Supplied nodes: " + repr(node_descriptors))
 
     #Build dependencies.  Basically, just pull everything into a dictionary for easy access
     node_descriptors_ret = {node["end_point"] : node for node in results}
@@ -152,20 +182,20 @@ def initialize(mqtt_client, setup_channel, *node_descriptors):
         all_links.update(node_links)
 
         if((len(node_links) + old_length) != len(all_links)):
-            print("Duplicate links!")
+            # print("Duplicate links!")
+            logger.error("Received duplicate links")
             raise ValueError
 
-    print(all_links)
+    # print(all_links)
 
     # Ensure that all dependencies have been met.  This is just error checking
     # make sure that all the dependencies are satisfied.
     actual_links = {x for x in all_links.keys()}
     required_links = {y["link"] for x in all_links.values() for y in x}
 
-    print(actual_links)
-    print(required_links)
-
-    print(actual_links & required_links)
+    # print(actual_links)
+    # print(required_links)
+    # print(actual_links & required_links)
 
     if((actual_links & required_links) != required_links):
         print("The following dependencies were not satisfied: " + repr((required_links - actual_links)))
@@ -203,18 +233,19 @@ def construct(host, port, setup_channel, *node_descriptors):
     try:
         mqtt_client = mqttInterface.MQTTInterface(port=port, host=host)
     except ConnectionRefusedError as e:
-        print("Couldn't connect to MQTT broker at " + str(args.host) + ":" + str(args.port) + ". Exiting.")
+        logger.error("Couldn't connect to MQTT broker at " + str(args.host) + ":" + str(args.port) + ". Exiting.")
         raise e
 
     # Start the MQTT interface
     mqtt_client.start()
 
-    # PErform the initialize -> assemble -> TODO: contstruct steps
+    # Perform the initialize -> assemble -> TODO: contstruct steps
     all_links = initialize(mqtt_client, setup_channel, *node_descriptors)
-    print("ALL LINKS: " + repr(all_links))
     result = assemble(mqtt_client, all_links)
 
-    print(result)
+    p_printer = pprint.PrettyPrinter(indent=4)
+
+    logger.info("All links: %s", p_printer.pformat(result))
 
 def main():
     pass

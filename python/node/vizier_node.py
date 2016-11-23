@@ -6,6 +6,10 @@ import json
 import queue
 from utils.utils import *
 
+### For logging ###
+import logging
+import logging.handlers as handlers
+
 #TODO: Add final intialization stage and heartbeat
 
 def create_wait_for_message_and_retry_coroutine(mqtt_client, link, timeout=10, retries=5):
@@ -25,8 +29,10 @@ def create_wait_for_message_and_retry_coroutine(mqtt_client, link, timeout=10, r
                 message = json.loads(network_message.payload.decode(encoding="UTF-8"))
                 break
             except Exception as e:
-                print("retry")
-                if(current_retry == retries):
+                logger = logging.getLogger(__name__)
+                logger.warning("Didn't recieve reply.  Retrying")
+                if(current_retry >= retries):
+                    logger.error("Didn't recieve reply after retries: " + repr(retries))
                     raise e
                 current_retry += 1
 
@@ -42,7 +48,9 @@ def _curry_get_message_handler(mqtt_client, info):
         try:
             network_message = json.loads(network_message.payload.decode(encoding="UTF-8"))
         except Exception as e:
-            print("Got malformed network message")
+            # TODO: (PAUL) Change this to be passed into function
+            logger = logging.getLogger(__name__)
+            logger.error("Got malformed network message")
 
         response_channel = network_message["response"]["link"]
         mqtt_client.send_message2(response_channel, json.dumps(info))
@@ -51,7 +59,7 @@ def _curry_get_message_handler(mqtt_client, info):
 
 class VizierNode:
 
-    def __init__(self, broker_host, broker_port, node_descriptor):
+    def __init__(self, broker_host, broker_port, node_descriptor, logging_config = None):
         self.mqtt_client = mqttInterface.MQTTInterface(port=broker_port, host=broker_host)
         self.node_descriptor = node_descriptor
         self.end_point = node_descriptor["end_point"]
@@ -60,8 +68,26 @@ class VizierNode:
         self.host = broker_host
         self.port = broker_port
 
+        if(logging_config):
+            logging.configDict(logging_config)
+            self.logger = logging.getLogger(__name__)
+        else:
+            self.logger = logging.getLogger(__name__)
+            self.logger.setLevel(logging.DEBUG)
+
+            formatter = logging.Formatter('%(asctime)s:%(levelname)s:%(message)s')
+
+            rfh = handlers.RotatingFileHandler(__name__+'.log')
+            rfh.setLevel(logging.DEBUG)
+            rfh.setFormatter(formatter)
+
+            self.logger.addHandler(rfh)
+
     def offer(self, link, info):
         """ Offers data on a particular link """
+
+        self.logger.info("OFFERING NODE DESCRIPTOR ON:" + link + '/node_descriptor')
+
         self.links[link] = info;
         self.mqtt_client.subscribe_with_callback(link, _curry_get_message_handler(self.mqtt_client, info))
 
@@ -87,7 +113,6 @@ class VizierNode:
         #Subscribe to response channels, then offer up our node descriptor so that the server can grab it
 
         self.offer(self.end_point + '/node_descriptor', self.node_descriptor)
-        print("OFFERING NODE DESCRIPTOR ON:" + self.end_point + '/node_descriptor')
 
         #Get final setup information from the server
         requested_links = [x["link"] for y in self.expanded_links.values() for x in y ]
@@ -98,5 +123,7 @@ class VizierNode:
 
         # Pull out the setup information from the sent message
         setup_information = {x : y["body"] for x, y in zip(requested_links, result)}
+
+        self.logger.info('Successfully connected to Vizier network')
 
         return setup_information
