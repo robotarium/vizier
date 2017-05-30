@@ -16,8 +16,6 @@ import logging.handlers as handlers
 FutureTask = collections.namedtuple('FutureTask', ['f', 'promise'])
 
 # Filter for logging
-
-
 class MQTTInterface:
     """
     This is a wrapper around the Paho MQTT interface with enhanced functionality

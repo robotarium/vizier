@@ -82,6 +82,7 @@ def create_node_descriptor_retriever_coroutine(mqtt_client, setup_channel, link,
             except Exception as e:
                 logger.warning("Retrying node descriptor retrieval for node: " + link)
                 if(current_retry == retries):
+                    print("Couldn't get descriptor for node: " + repr(vizier_get))
                     raise e
                 current_retry += 1
 
@@ -198,7 +199,10 @@ def initialize(mqtt_client, setup_channel, *node_descriptors):
     # print(actual_links & required_links)
 
     if((actual_links & required_links) != required_links):
-        print("The following dependencies were not satisfied: " + repr((required_links - actual_links)))
+        p_printer = pprint.PrettyPrinter(indent=4)
+        p_printer.pprint("The following dependencies were not satisfied: " + repr((required_links - actual_links)))
+        p_printer.pprint(all_links)
+
         raise ValueError
 
     return all_links

@@ -48,7 +48,7 @@ def _curry_get_message_handler(mqtt_client, info):
         try:
             network_message = json.loads(network_message.payload.decode(encoding="UTF-8"))
         except Exception as e:
-            # TODO: (PAUL) Change this to be passed into function
+            # TODO: (PAUL) Change the logger to be passed into function
             logger = logging.getLogger(__name__)
             logger.error("Got malformed network message")
 
@@ -86,7 +86,7 @@ class VizierNode:
     def offer(self, link, info):
         """ Offers data on a particular link """
 
-        self.logger.info("OFFERING NODE DESCRIPTOR ON:" + link + '/node_descriptor')
+        self.logger.info("OFFERING SOMETHING ON: " + link)
 
         self.links[link] = info;
         self.mqtt_client.subscribe_with_callback(link, _curry_get_message_handler(self.mqtt_client, info))
