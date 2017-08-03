@@ -31,7 +31,7 @@ rfh = handlers.RotatingFileHandler(__name__+'.log')
 rfh.setLevel(logging.DEBUG)
 rfh.setFormatter(formatter)
 
-logger.addHandler(rfh)
+#logger.addHandler(rfh)
 
 #TODO: Check the prior node produces the correct dependencies.  Should be a fairly minor modification
 

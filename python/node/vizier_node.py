@@ -81,7 +81,7 @@ class VizierNode:
             rfh.setLevel(logging.DEBUG)
             rfh.setFormatter(formatter)
 
-            self.logger.addHandler(rfh)
+            #self.logger.addHandler(rfh)
 
     def offer(self, link, info):
         """ Offers data on a particular link """
