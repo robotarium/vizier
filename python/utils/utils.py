@@ -13,6 +13,9 @@ def create_vizier_error_message(error_string):
 def create_vizier_get_message(link, response_link):
     """
     Create a vizier get message.  The response to the get message will come on the response_link.
+
+    link: string (link from which data is retrieved)
+    response_link: string (link to which response is sent)
     """
 
     return {"type" : "GET", "link" : link, "response" : {"type" : "RESPONSE", "link" : response_link}}
@@ -53,7 +56,6 @@ def expand_path(path, link):
     else:
         return link
 
-
 def generate_links_from_descriptor(descriptor):
     """
     Recursively parses a descriptor file, expanding links as it goes.  This function will
@@ -70,7 +72,7 @@ def generate_links_from_descriptor(descriptor):
             raise ValueError
 
         if(len(body["links"]) == 0):
-            return {link : body["requests"]}
+            return {link : {"requests": body["requests"], "type": body["type"]}}
 
         #Else...
 
@@ -78,17 +80,17 @@ def generate_links_from_descriptor(descriptor):
         for x in body["links"]:
             local_links.update(parse_links(link, x, body["links"][x]))
 
-            for request in body["links"][x]["requests"]:
-                if("response" in request):
-                    response_link = expand_path(expand_path(link, x), request["response"]["link"])
-                    if not is_link_subset_of(link, response_link):
-                        print("Cannot have link that is not a subset of the current path")
-                        print("Link: " + response_link)
-                        print("Path: " + link)
-                        raise ValueError
-                    request["response"]["link"] = response_link
+            # for request in body["links"][x]["requests"]:
+            #     if("response" in request):
+            #         response_link = expand_path(expand_path(link, x), request["response"]["link"])
+            #         if not is_link_subset_of(link, response_link):
+            #             print("Cannot have link that is not a subset of the current path")
+            #             print("Link: " + response_link)
+            #             print("Path: " + link)
+            #             raise ValueError
+            #         request["response"]["link"] = response_link
 
-        local_links.update({link : body["requests"]})
+        #local_links.update({link : body["requests"]})
         return local_links
 
     return parse_links("", descriptor["end_point"], descriptor)

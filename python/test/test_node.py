@@ -1,5 +1,4 @@
 import asyncio
-import mqtt_interface.mqttInterface as mqttInterface
 import functools as ft
 import time
 import json
@@ -32,9 +31,10 @@ def main():
     node.start()
     setup_information = node.connect()
 
-    print("SETUP INFO: " + repr(setup_information))
+    print("Publishable topics:", node.get_publishable_topics())
+    print('Subscriptable topics:', node.get_subscribable_topics())
 
-    #node.stop()
+    node.stop()
 
 if(__name__ == "__main__"):
     main()

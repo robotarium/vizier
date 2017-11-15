@@ -6,13 +6,10 @@
     {
       "requests" :
       [
-        {
-         "type" : "GET",
-         "link" : "a/a_sub",
-         "response" : {"type" : "RESPONSE", "link" : "/response"}
-        }
+        "a/a_sub"
       ],
-      "links" : {}
+      "links" : {},
+      "type" : "STREAM"
     }
   },
   "requests" : [],

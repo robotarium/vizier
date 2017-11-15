@@ -5,7 +5,8 @@
     "/a_sub" :
     {
       "requests" : [],
-      "links" : {}
+      "links" : {},
+      "type": "STREAM"
     }
   },
   "requests" : [],

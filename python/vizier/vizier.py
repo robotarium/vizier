@@ -2,8 +2,7 @@ import vizier.edfg as edfg
 import vizier.node as node
 import vizier.colors as colors
 import asyncio
-import mqtt_interface.mqttInterface as mqttInterface
-import mqtt_interface.pipeline as pipeline
+import mqtt_interface.mqttinterface as mqtt
 import pprint
 import functools as ft
 import time
@@ -14,245 +13,158 @@ import collections
 import pprint
 from utils.utils import *
 
+import concurrent.futures as futures
+
 ### For logging ###
 import logging
 import logging.handlers as handlers
 
 ### LOGGING ###
 
-# TODO: (PAUL) This should probably be done in a better way
+logging.basicConfig(format='%(levelname)s %(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-formatter = logging.Formatter('%(asctime)s:%(levelname)s:%(message)s')
+class Vizier():
 
-rfh = handlers.RotatingFileHandler(__name__+'.log')
-rfh.setLevel(logging.DEBUG)
-rfh.setFormatter(formatter)
+    def __init__(self, host, port):
+        logger.info(port)
+        self.mqtt_client = mqtt.MQTTInterface(host=host, port=port)
+        self.executor = futures.ThreadPoolExecutor(max_workers=500)
 
-#logger.addHandler(rfh)
+    def _node_descriptor_retriever(self, setup_channel, link, timeout=5, retries=5):
+        """
+        This function creates an asyncio that handles the retrieval of node descriptors from various corresponding nodes.
+        timeout: how long the function waits for a response per retry; so the total time takes timeout * retries.
+        retries: how many times to retry waiting for a node descriptor.  In practice, I've actually never had to retry.
+        """
 
-#TODO: Check the prior node produces the correct dependencies.  Should be a fairly minor modification
+        response_channel = setup_channel + '/' + link + '/response'
+        vizier_get = create_vizier_get_message(link, response_channel)
 
-#TODO: AFTER INITIALIZATION, WE CAN JUST MAKE CHANNELS THAT THE NODE'S DATA CAN BE REQUESTED FROM
+        # Subscribe to the response channel
+        _, q = self.mqtt_client.subscribe(response_channel)
 
-def create_get_response_coroutine(mqtt_client, to_link, message):
-    """
-    This function creates and returns an asyncio coroutine that creates a JSON message and
-    sends it to the received vizier URI link.
-    """
-    @asyncio.coroutine
-    def f():
+        message = None
 
-        # In a put, I can give a link back.  The client should then follow the link with another get
-
-        try:
-            json_message = json.dumps(message)
-        except Exception as e:
-            raise
-
-        yield from mqtt_client.send_message(to_link, json_message)
-
-    return f
-
-def create_node_descriptor_retriever_coroutine(mqtt_client, setup_channel, link, timeout = 5, retries = 5):
-    """
-    This function creates an asyncio that handles the retrieval of node descriptors from various corresponding nodes.
-    timeout: how long the function waits for a response per retry; so the total time takes timeout * retries.
-    retries: how many times to retry waiting for a node descriptor.  In practice, I've actually never had to retry.
-    """
-    response_channel = setup_channel + '/' + link + '/response'
-    vizier_get = create_vizier_get_message(link, response_channel)
-
-    @asyncio.coroutine
-    def f():
-
-        yield from mqtt_client.subscribe(response_channel)
-
-        current_retry = 0
-
-        #  Try to handshake the messages
-        while True:
+        # Do this for number of retries
+        for i in range(retries):
             try:
-                yield from mqtt_client.send_message(link, bytearray(json.dumps(vizier_get).encode(encoding="UTF-8")))
-                network_message = yield from mqtt_client.wait_for_message(response_channel, timeout)
-                message = json.loads(network_message.payload.decode(encoding="UTF-8"))
+                # Send a message to the node descriptor channel, which should illicit a response
+                self.mqtt_client.send_message(link, json.dumps(vizier_get).encode(encoding='UTF-8'))
+                # Try to get a message on the response channel
+                mqtt_message = q.get(timeout=timeout)
+                # Load/decode the message from byte array -> python
+                message = json.loads(mqtt_message.payload.decode(encoding='UTF-8'))
+                message = message["body"]
                 break
             except Exception as e:
+                logger.warning(repr(e))
                 logger.warning("Retrying node descriptor retrieval for node: " + link)
-                if(current_retry == retries):
-                    print("Couldn't get descriptor for node: " + repr(vizier_get))
-                    raise e
-                current_retry += 1
+
+        # When we're done, unsubscribe from the response channel
+        self.mqtt_client.unsubscribe(response_channel)
 
         return message
 
-    return f
+    def _initialize(self, setup_channel, *node_descriptors):
+        """
+        Constructs a network given the nodes in node descriptors.  This function depends
+        on each node offering its node descriptor properly.  Each node descriptor should
+        always be offered.
+        """
 
-def create_node_handshake(mqtt_client, link, requests):
-    """
-    This function creates and returns a function for use in the EDFG that handles handshaking nodes after startup.
-    That is, repeatedly calls 'create_get_response_coroutine' to realize all the needed handshakes.
-    """
-    coroutines = []
+        # Retrieve all the node descriptor from the supplied ones that we're expecting
+        node_descriptor_links = [nd + "/node_descriptor" for nd in node_descriptors]
+        # Call this function on all the links to attempts to retrieve a bunch of node descriptors
+        # concurrently
+        results = list(self.executor.map(ft.partial(self._node_descriptor_retriever, setup_channel), node_descriptor_links))
 
-    for request in requests:
-        requested_link = request["link"]
-        response_channel = request["response"]["link"]
+        for i, r in enumerate(results):
+            if r is None:
+                logger.error("Couldn't retrieve descriptor for node: %s", repr(node_descriptor_links[i]))
+                return None
 
-        message = create_vizier_get_response(requested_link, message_type="data")
+        logger.info("Resulting link structure is: %s", repr(results))
 
-        coroutines.append(create_get_response_coroutine(mqtt_client, response_channel, message))
+        # Do some error checking to make sure we got the right nodes
 
-        logger.info("Creating node handshake on channel %s : message : %s", repr(message), repr(response_channel))
+        received_nodes = [node["end_point"] for node in results]
 
-    loop = asyncio.get_event_loop()
+        compare = lambda x, y: collections.Counter(x) == collections.Counter(y)
 
-    # Responses are responses from the dependencies for this node.
-    def f(*responses):
+        if not set(received_nodes) == set(node_descriptors):
+            logger.error("Received nodes (%s) not the same as supplied node descriptors (%s)", repr(received_nodes), repr(node_descriptors))
 
-        result = None
+        #Build dependencies.  Basically, just pull everything into a dictionary for easy access
+        node_descriptors_ret = {node["end_point"] : node for node in results}
 
-        if(any(filter(lambda x: x["type"] == "ERROR", responses))):
-            # Handle the error
+        all_links = {}
+        for descriptor in results:
+            node_links = generate_links_from_descriptor(descriptor)
+            old_length = len(all_links)
+            all_links.update(node_links)
 
-            result = utils.create_vizier_error_message([])
+            if((len(node_links) + old_length) != len(all_links)):
+                # print("Duplicate links!")
+                logger.error("Received duplicate links")
+                raise ValueError
 
-            for r in responses:
-                if(r["type"] == "ERROR"):
-                    result["message"] = result["message"] + r["message"]
-        else:
-            for coroutine in coroutines:
-                try:
-                    result = loop.run_until_complete(coroutine())
-                except queue.Empty as e:
-                    # If we don't get a response from the node, "throw" an error
-                    result = utils.create_vizier_error_message("Couldn't initialize node " + link)
+        actual_links = {x for x in all_links.keys()}
+        required_links = {y for x in all_links.values() for y in x['requests']}
 
-        return {"type": "OK"}
-    return f
+        if((actual_links & required_links) != required_links):
+            p_printer = pprint.PrettyPrinter(indent=4)
+            p_printer.pprint("The following dependencies were not satisfied: " + repr((required_links - actual_links)))
+            p_printer.pprint(all_links)
 
-def create_node_listener(received_nodes):
-
-    def f(*args):
-        return dict(zip(received_nodes, args))
-
-    return f
-
-def initialize(mqtt_client, setup_channel, *node_descriptors):
-    """
-    Constructs a network given the nodes in node descriptors.
-    """
-
-    # Retrieve all the node descriptor from the supplied ones that we're expecting
-    node_descriptor_links = [nd + "/node_descriptor" for nd in node_descriptors]
-
-    results = []
-    for ndl in node_descriptor_links:
-        ndrc = create_node_descriptor_retriever_coroutine(mqtt_client, setup_channel, ndl)
-        try:
-            result = asyncio.get_event_loop().run_until_complete(ndrc())
-            logger.info("Receive node descriptor link: %s", ndl)
-            results.append(result)
-        except Exception as e:
-            logger.error("Didn't receive contact from all nodes")
-            raise
-
-    logger.info("Resulting link structure is: %s", repr(results))
-
-    # Do some error checking to make sure we got the right nodes
-
-    received_nodes = [node["end_point"] for node in results]
-
-    compare = lambda x, y: collections.Counter(x) == collections.Counter(y)
-
-    if not set(received_nodes) == set(node_descriptors):
-        logger.error("Received nodes (%s) not the same as supplied node descriptors (%s)", repr(received_nodes), repr(node_descriptors))
-        # print("Recieved nodes not the same as supplied node descriptors")
-        # print("Received nodes: " + repr(received_nodes))
-        # print("Supplied nodes: " + repr(node_descriptors))
-
-    #Build dependencies.  Basically, just pull everything into a dictionary for easy access
-    node_descriptors_ret = {node["end_point"] : node for node in results}
-
-    all_links = {}
-    for descriptor in results:
-        node_links = generate_links_from_descriptor(descriptor)
-        old_length = len(all_links)
-        all_links.update(node_links)
-
-        if((len(node_links) + old_length) != len(all_links)):
-            # print("Duplicate links!")
-            logger.error("Received duplicate links")
             raise ValueError
 
-    # print(all_links)
+        return {descriptor['end_point'] : generate_links_from_descriptor(descriptor) for descriptor in results}
 
-    # Ensure that all dependencies have been met.  This is just error checking
-    # make sure that all the dependencies are satisfied.
-    actual_links = {x for x in all_links.keys()}
-    required_links = {y["link"] for x in all_links.values() for y in x}
+    def _assemble(self, node_links):
+        """
+        Assemble assembles the vizier network, connecting all the required nodes to their specified dependencies.  In particular,
+        it handshakes all the nodes with their dependencies to make sure that they're properly registered on the network.
+        """
 
-    # print(actual_links)
-    # print(required_links)
-    # print(actual_links & required_links)
+        # Could do something more clever here eventually
+        link_mapping = {x : {'link': x, 'type': node_links[y][x]['type']} for y in node_links for x in node_links[y]}
 
-    if((actual_links & required_links) != required_links):
-        p_printer = pprint.PrettyPrinter(indent=4)
-        p_printer.pprint("The following dependencies were not satisfied: " + repr((required_links - actual_links)))
-        p_printer.pprint(all_links)
+        # Offer something on each topic.
+        for x in link_mapping:
+            self.offer('vizier/' + x, link_mapping[x])
 
-        raise ValueError
+        return True
 
-    return all_links
+    def offer(self, link, data):
 
-def assemble(mqtt_client, node_links):
-    """
-    Assemble assembles the vizier network, connecting all the required nodes to their specified dependencies.  In particular,
-    it handshakes all the nodes with their dependencies to make sure that they're properly registered on the network.
-    """
-    edfg_builder = edfg.EDFGBuilder()
+        def f(network_message):
 
-    for link in node_links:
-        edfg_builder.with_node(node.Node(link, [x["link"] for x in node_links[link]], create_node_handshake(mqtt_client, link, node_links[link])))
+            try:
+                network_message = json.loads(network_message.payload.decode(encoding="UTF-8"))
+            except Exception as e:
+                # TODO: (PAUL) Change the logger to be passed into function
+                logger = logging.getLogger(__name__)
+                logger.error("Got malformed network message")
 
-    # This is an extra node to print out all the nodes that have been received.
-    edfg_builder.with_node(node.Node("all_results", node_links.keys(), create_node_listener(node_links.keys())))
+            if('response' in network_message and 'link' in network_message['response']):
+                response_channel = network_message['response']['link']
+                message = create_vizier_get_response(data, message_type='data')
+                self.mqtt_client.send_message(response_channel, json.dumps(message).encode(encoding='UTF-8'))
 
-    # This builds the
-    edfg_ = edfg_builder.build()
+        self.mqtt_client.subscribe_with_callback(link, f)
 
-    # Return the result of executing the EDFG with pretty printing for debugging
-    return(edfg_.execute(pretty_print = True))
+    def start(self, setup_channel, node_descriptors):
+        # Start the MQTT client
+        self.mqtt_client.start()
+        node_links = self._initialize(setup_channel, *node_descriptors)
+        result = None
+        if(node_links is not None):
+            result = self._assemble(node_links)
 
-def execute():
-    pass
+        return result
 
-def construct(host, port, setup_channel, *node_descriptors):
-
-    #TODO: I need to build all the dependencies up front to make it more obvious what's happening
-
-    # Attempt to connect to MQTT broker
-    try:
-        mqtt_client = mqttInterface.MQTTInterface(port=port, host=host)
-    except ConnectionRefusedError as e:
-        logger.error("Couldn't connect to MQTT broker at " + str(args.host) + ":" + str(args.port) + ". Exiting.")
-        raise e
-
-    # Start the MQTT interface
-    mqtt_client.start()
-
-    # Perform the initialize -> assemble -> TODO: contstruct steps
-    all_links = initialize(mqtt_client, setup_channel, *node_descriptors)
-    result = assemble(mqtt_client, all_links)
-
-    p_printer = pprint.PrettyPrinter(indent=4)
-
-    logger.info("All links: %s", p_printer.pformat(result))
-
-def main():
-    pass
-
-if(__name__ == "__main__"):
-    main()
+    def stop(self):
+        self.mqtt_client.stop()

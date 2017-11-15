@@ -2,7 +2,7 @@ import mqtt_interface.pipeline as pipeline
 import mqtt_interface.promise as promise
 import mqtt_interface.asyncqueue as asyncqueue
 import paho.mqtt.client as mqtt
-import asyncio
+# import asyncio
 import collections
 import concurrent.futures
 import functools
@@ -31,7 +31,7 @@ class MQTTInterface:
             self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=5)
             self.futures = []
 
-            self.clientQueue = queue.Queue()
+            self.client_queue = queue.Queue()
             self.client = mqtt.Client()
             self.client.on_message = self.on_message
 
@@ -39,7 +39,7 @@ class MQTTInterface:
             self.channels = {}
             self.callbacks = {}
 
-            self.loop = asyncio.get_event_loop()
+            # self.loop = asyncio.get_event_loop()
 
             # For logging
 
@@ -51,13 +51,6 @@ class MQTTInterface:
                 self.logger.setLevel(logging.DEBUG)
 
                 formatter = logging.Formatter('%(asctime)s:%(levelname)s:%(message)s')
-
-                rfh = handlers.RotatingFileHandler(__name__+'.log')
-                rfh.setLevel(logging.DEBUG)
-                rfh.setFormatter(formatter)
-
-                self.logger.addHandler(rfh)
-
 
     def create_on_connect(self, promise):
         """
@@ -78,20 +71,20 @@ class MQTTInterface:
         if(msg.topic in self.callbacks):
             self.callbacks[msg.topic](msg)
 
-        if(msg.topic in self.channels):
-            self.channels[msg.topic].put(msg)
+        # if(msg.topic in self.channels):
+        #     self.channels[msg.topic].put(msg)
 
-    def _modifyClient(self, f):
-        '''
-        Allows the insertion of a function into the client's modification queue.  Returns a future representing
-        the eventual returned result of the submitted function.
-        '''
-
-        #A promise is really just a queue of size 1
-        prom = promise.AsyncPromise(self.loop, executor=self.executor)
-        self.clientQueue.put(FutureTask(f, prom))
-
-        return prom
+    # def _modifyClient(self, f):
+    #     '''
+    #     Allows the insertion of a function into the client's modification queue.  Returns a future representing
+    #     the eventual returned result of the submitted function.
+    #     '''
+    #
+    #     #A promise is really just a queue of size 1
+    #     prom = promise.AsyncPromise(self.loop, executor=self.executor)
+    #     self.client_queue.put(FutureTask(f, prom))
+    #
+    #     return prom
 
     def _modify_client_sync(self, f):
         """
@@ -99,7 +92,7 @@ class MQTTInterface:
         """
         #A promise is really just a queue of size 1
         prom = promise.Promise(executor=self.executor)
-        self.clientQueue.put(FutureTask(f, prom))
+        self.client_queue.put(FutureTask(f, prom))
 
         return prom
 
@@ -117,71 +110,78 @@ class MQTTInterface:
             self.client.subscribe(channel)
             return True
 
+        # Try to modify this class
         prom = self._modify_client_sync(clientModification)
+        # Wait on the result of the modification
         result = prom.result()
 
         if not result:
             self.logger.error("Client couldn't successfully subscribe to topic: " + channel)
 
-    @asyncio.coroutine
+    # @asyncio.coroutine
+    # def subscribe(self, channel):
+    #     """
+    #     Thread safe
+    #     A subscribe routine that yields a queue to which all subsequent messages to the given topic will be passed
+    #     """
+    #     #Should be thread safe...
+    #     self.channels.update({channel: asyncqueue.AsyncQueue(executor=self.executor)})
+    #
+    #     def clientModification():
+    #         self.client.subscribe(channel)
+    #         return True
+    #
+    #     prom = self._modifyClient(clientModification)
+    #     result = yield from prom.result()
+    #
+    #     if not result:
+    #         self.logger.error("Client couldn't successfully subscribe to topic: " + channel)
+
     def subscribe(self, channel):
         """
         Thread safe
         A subscribe routine that yields a queue to which all subsequent messages to the given topic will be passed
         """
         #Should be thread safe...
-        self.channels.update({channel: asyncqueue.AsyncQueue(executor=self.executor)})
+        new_queue = queue.Queue()
+        # new_queue = asyncqueue.AsyncQueue(executor=self.executor)
+        def f(msg):
+            new_queue.put(msg)
 
-        def clientModification():
-            self.client.subscribe(channel)
-            return True
+        result = self.subscribe_with_callback(channel, f)
+        #self.channels.update({channel: new_queue})
 
-        prom = self._modifyClient(clientModification)
-        result = yield from prom.result()
-
-        if not result:
-            self.logger.error("Client couldn't successfully subscribe to topic: " + channel)
-
-    def subscribe2(self, channel):
-        """
-        Thread safe
-        A subscribe routine that yields a queue to which all subsequent messages to the given topic will be passed
-        """
-        #Should be thread safe...
-        new_queue = asyncqueue.AsyncQueue(executor=self.executor)
-        self.channels.update({channel: new_queue})
-
-        def clientModification():
-            self.client.subscribe(channel)
-            return True
-
-        prom = self._modify_client_sync(clientModification)
-        result = prom.result()
-
-        if not result:
-            self.logger.error("Client couldn't successfully subscribe to topic: " + channel)
+        # def client_modification():
+        #     self.client.subscribe(channel)
+        #     return True
+        #
+        # prom = self._modify_client_sync(client_modification)
+        # result = prom.result()
+        #
+        # if not result:
+        #     self.logger.error("Client couldn't successfully subscribe to topic: " + channel)
 
         return (result, new_queue)
 
-    @asyncio.coroutine
+    # @asyncio.coroutine
+    # def unsubscribe(self, channel):
+    #     """
+    #     Unsubscribes from a particular channel
+    #     """
+    #     def clientModification():
+    #         self.client.unsubscribe(channel)
+    #         return True
+    #
+    #     prom = self._modifyClient(clientModification)
+    #     result = yield from prom.result()
+    #
+    #     if not result:
+    #         self.logger.error("Client couldn't successfully unsubscribe to topic: " + channel)
+    #
+    #     #Remove duplex channel from list of entities.  Should be thread-safe...
+    #     self.channels.pop(channel, None)
+
     def unsubscribe(self, channel):
-        """
-        Unsubscribes from a particular channel
-        """
-        def clientModification():
-            self.client.unsubscribe(channel)
-            return True
-
-        prom = self._modifyClient(clientModification)
-        result = yield from prom.result()
-
-        if not result:
-            self.logger.error("Client couldn't successfully unsubscribe to topic: " + channel)
-
-        #Remove duplex channel from list of entities.  Should be thread-safe...
-        self.channels.pop(channel, None)
-
-    def unsubscribe2(self, channel):
         """
         Unsubscribes from a particular channel
         """
@@ -200,45 +200,46 @@ class MQTTInterface:
 
         return result
 
-    @asyncio.coroutine
-    def wait_for_message(self, channel, timeout=60):
-        """
-        Asyncio coroutine that waits for a particular message from a channel.
-        """
-        message = yield from self.channels[channel].async_get(self.loop, timeout=timeout)
-        return message
+    # @asyncio.coroutine
+    # def wait_for_message(self, channel, timeout=60):
+    #     """
+    #     Asyncio coroutine that waits for a particular message from a channel.
+    #     """
+    #     message = yield from self.channels[channel].async_get(self.loop, timeout=timeout)
+    #     return message
+    #
+    # @asyncio.coroutine
+    # def send_message(self, channel, message):
+    #     """
+    #     Thread safe
+    #     Asyncio-compatible
+    #     Sends a message on a particlar channel
+    #     """
+    #     def clientModification():
+    #         self.client.publish(channel, message)
+    #         return True
+    #
+    #     prom = self._modifyClient(clientModification)
+    #     result = yield from prom.result()
+    #
+    #     if not result:
+    #         self.logger.error("Client couldn't successfully send message to topic: " + channel)
 
-    @asyncio.coroutine
     def send_message(self, channel, message):
-        """
-        Thread safe
-        Asyncio-compatible
-        Sends a message on a particlar channel
-        """
-        def clientModification():
+
+        def client_modification():
             self.client.publish(channel, message)
             return True
 
-        prom = self._modifyClient(clientModification)
-        result = yield from prom.result()
-
-        if not result:
-            self.logger.error("Client couldn't successfully send message to topic: " + channel)
-
-    def send_message2(self, channel, message):
-        def clientModification():
-            self.client.publish(channel, message)
-            return True
-
-        prom = self._modifyClient(clientModification)
+        prom = self._modify_client_sync(client_modification)
         result = prom.result()
 
         if not result:
             self.logger.error("Client couldn't successfully send message to topic: " + channel)
 
-    def run_pipeline(self, pipeline, exeption_handler=None):
-        self.loop.set_exception_handler(exeption_handler)
-        return self.loop.run_until_complete(pipeline)
+    # def run_pipeline(self, pipeline, exeption_handler=None):
+    #     self.loop.set_exception_handler(exeption_handler)
+    #     return self.loop.run_until_complete(pipeline)
 
     def start(self):
 
@@ -260,9 +261,9 @@ class MQTTInterface:
         p.result()
 
         #Loop to handle modifications to client
-        def clientQ():
+        def client_thread():
             while True:
-                result = self.clientQueue.get()
+                result = self.client_queue.get()
                 if result is None:
                     break
 
@@ -275,13 +276,13 @@ class MQTTInterface:
 
             return True
 
-        self.futures.append(self.executor.submit(clientQ))
+        self.futures.append(self.executor.submit(client_thread))
 
 
     def stop(self):
         #Stops MQTT client
         self.client.loop_stop()
-        self.clientQueue.put(None)
+        self.client_queue.put(None)
 
         results = [f.result(timeout=5) for f in self.futures]
 

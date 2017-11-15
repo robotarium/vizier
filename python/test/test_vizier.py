@@ -1,5 +1,4 @@
 import asyncio
-import mqtt_interface.mqttInterface as mqttInterface
 import functools as ft
 import time
 import json
@@ -13,7 +12,7 @@ def main():
     #TODO: Add support for separate experiments
     #parser.add_argument("experimend_id", type=int, help="The ID of the experiment")
     parser.add_argument("config", help=".json file node information")
-    parser.add_argument("-port", type=int, help="MQTT Port", default=8080)
+    parser.add_argument("-port", type=int, help="MQTT Port", default=1884)
     parser.add_argument("-host", help="MQTT Host IP", default="localhost")
 
     args = parser.parse_args()
@@ -32,12 +31,16 @@ def main():
         print("Couldn't open given node file " + args.config)
         return -1
 
-
     # TODO: DON'T FORGET TO UNSUBSCRIBE FROM CHANNELS
     setup_channel = 'vizier/setup'
     node_descriptors = config["nodes"]
 
-    vizier.construct(args.host, args.port, setup_channel, *node_descriptors)
+    v = vizier.Vizier(args.host, args.port)
+    v.start(setup_channel, node_descriptors)
+
+    input('Press something to quit')
+
+    v.stop()
 
 if(__name__ == "__main__"):
     main()
