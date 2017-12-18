@@ -1,12 +1,13 @@
 {
-  "end_point" : "b",
+  "end_point" : "c",
   "links" :
   {
-    "/b_sub" :
+    "/c_sub" :
     {
       "requests" :
       [
-        "a/a_sub"
+        "a/a_sub",
+        "b/b_sub/b_sub"
       ],
       "links" : {},
       "type" : "STREAM"

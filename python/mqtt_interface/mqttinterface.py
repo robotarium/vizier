@@ -118,25 +118,6 @@ class MQTTInterface:
         if not result:
             self.logger.error("Client couldn't successfully subscribe to topic: " + channel)
 
-    # @asyncio.coroutine
-    # def subscribe(self, channel):
-    #     """
-    #     Thread safe
-    #     A subscribe routine that yields a queue to which all subsequent messages to the given topic will be passed
-    #     """
-    #     #Should be thread safe...
-    #     self.channels.update({channel: asyncqueue.AsyncQueue(executor=self.executor)})
-    #
-    #     def clientModification():
-    #         self.client.subscribe(channel)
-    #         return True
-    #
-    #     prom = self._modifyClient(clientModification)
-    #     result = yield from prom.result()
-    #
-    #     if not result:
-    #         self.logger.error("Client couldn't successfully subscribe to topic: " + channel)
-
     def subscribe(self, channel):
         """
         Thread safe
@@ -144,42 +125,12 @@ class MQTTInterface:
         """
         #Should be thread safe...
         new_queue = queue.Queue()
-        # new_queue = asyncqueue.AsyncQueue(executor=self.executor)
         def f(msg):
             new_queue.put(msg)
 
         result = self.subscribe_with_callback(channel, f)
-        #self.channels.update({channel: new_queue})
-
-        # def client_modification():
-        #     self.client.subscribe(channel)
-        #     return True
-        #
-        # prom = self._modify_client_sync(client_modification)
-        # result = prom.result()
-        #
-        # if not result:
-        #     self.logger.error("Client couldn't successfully subscribe to topic: " + channel)
 
         return (result, new_queue)
-
-    # @asyncio.coroutine
-    # def unsubscribe(self, channel):
-    #     """
-    #     Unsubscribes from a particular channel
-    #     """
-    #     def clientModification():
-    #         self.client.unsubscribe(channel)
-    #         return True
-    #
-    #     prom = self._modifyClient(clientModification)
-    #     result = yield from prom.result()
-    #
-    #     if not result:
-    #         self.logger.error("Client couldn't successfully unsubscribe to topic: " + channel)
-    #
-    #     #Remove duplex channel from list of entities.  Should be thread-safe...
-    #     self.channels.pop(channel, None)
 
     def unsubscribe(self, channel):
         """
@@ -200,31 +151,6 @@ class MQTTInterface:
 
         return result
 
-    # @asyncio.coroutine
-    # def wait_for_message(self, channel, timeout=60):
-    #     """
-    #     Asyncio coroutine that waits for a particular message from a channel.
-    #     """
-    #     message = yield from self.channels[channel].async_get(self.loop, timeout=timeout)
-    #     return message
-    #
-    # @asyncio.coroutine
-    # def send_message(self, channel, message):
-    #     """
-    #     Thread safe
-    #     Asyncio-compatible
-    #     Sends a message on a particlar channel
-    #     """
-    #     def clientModification():
-    #         self.client.publish(channel, message)
-    #         return True
-    #
-    #     prom = self._modifyClient(clientModification)
-    #     result = yield from prom.result()
-    #
-    #     if not result:
-    #         self.logger.error("Client couldn't successfully send message to topic: " + channel)
-
     def send_message(self, channel, message):
 
         def client_modification():
@@ -236,10 +162,6 @@ class MQTTInterface:
 
         if not result:
             self.logger.error("Client couldn't successfully send message to topic: " + channel)
-
-    # def run_pipeline(self, pipeline, exeption_handler=None):
-    #     self.loop.set_exception_handler(exeption_handler)
-    #     return self.loop.run_until_complete(pipeline)
 
     def start(self):
 

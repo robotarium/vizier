@@ -33,7 +33,13 @@ def main():
 
     print("Publishable topics:", node.get_publishable_topics())
     print('Subscriptable topics:', node.get_subscribable_topics())
+    print("Gettable topics:", node.get_gettable_topics())
+    print('Offerable topics:', node.get_offerable_topics())
 
+    for x in node.get_gettable_topics():
+        print(node.get_data(x, 5, 1))
+
+    time.sleep(10)
     node.stop()
 
 if(__name__ == "__main__"):

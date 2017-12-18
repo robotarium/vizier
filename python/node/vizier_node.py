@@ -27,7 +27,6 @@ class VizierNode:
         self.publishable_mapping = {}
         self.offerable_mapping = {}
         self.offerable_data = {}
-        self.receivable_mapping = {}
         self.gettable_mapping = {}
 
         self.executor = futures.ThreadPoolExecutor(max_workers=100)
@@ -110,6 +109,8 @@ class VizierNode:
         # TODO: Don't let this name be hard coded
         setup_channel = 'vizier/setup'
 
+        print(self.expanded_links)
+
         #Subscribe to response channels, then offer up our node descriptor so that the server can grab it
         self._offer_once(self.end_point + '/node_descriptor', self.node_descriptor)
 
@@ -133,24 +134,24 @@ class VizierNode:
         providing_mapping = dict(zip(proposed_links, [x['body'] for x in publish_results]))
         receiving_mapping = dict(zip(requested_links, [x['body'] for x in receive_results]))
 
-        offerable_topics = filter(lambda x: providing_mapping[x]['type'] == "DATA", providing_mapping)
-        publishable_topics = filter(lambda x: providing_mapping[x]['type'] == "STREAM", providing_mapping)
+        offerable_topics = list(filter(lambda x: providing_mapping[x]['type'] == "DATA", providing_mapping))
+        publishable_topics = list(filter(lambda x: providing_mapping[x]['type'] == "STREAM", providing_mapping))
 
-        subscriptable_topics = filter(lambda x: receiving_mapping[x]['type'] == "STREAM", receiving_mapping)
-        gettable_topics = filter(lambda x: receiving_mapping[x]['type'] == "DATA", receiving_mapping)
+        subscriptable_topics = list(filter(lambda x: receiving_mapping[x]['type'] == "STREAM", receiving_mapping))
+        gettable_topics = list(filter(lambda x: receiving_mapping[x]['type'] == "DATA", receiving_mapping))
 
-        print(list(offerable_topics))
-        print(list(publishable_topics))
-        print(list(subscriptable_topics))
-        print(list(gettable_topics))
+        self.logger.info('Offerable topics: ' + repr(list(offerable_topics)))
+        self.logger.info('Publishable topic: ' + repr(list(publishable_topics)))
+        self.logger.info('Subscriptable topics: ' + repr(list(subscriptable_topics)))
+        self.logger.info('Gettable topics: ' + repr(list(gettable_topics)))
 
         self.offerable_mapping = {x : providing_mapping[x]['link'] for x in offerable_topics}
         self.offerable_data = {x : {} for x in offerable_topics}
 
         # Ensure that we can offer data on the topics we said we would
         for x in offerable_topics:
-            def f(network_message):
 
+            def f(network_message):
                 try:
                     network_message = json.loads(network_message.payload.decode(encoding='UTF-8'))
                 except Exception as e:
@@ -164,11 +165,11 @@ class VizierNode:
                     json_message = create_vizier_get_response(self.offerable_data[x], message_type="data")
                     self.mqtt_client.send_message(response_channel, json.dumps(json_message).encode(encoding='UTF-8'))
 
+            # Offer data on a particular channel
             self.mqtt_client.subscribe_with_callback(x, f)
 
         self.publishable_mapping = {x : providing_mapping[x]['link'] for x in publishable_topics}
-
-        self.subscriptable_mapping = {x : receiving_mapping[x]['link'] for x in subscriptable_topics}
+        self.subscribable_mapping = {x : receiving_mapping[x]['link'] for x in subscriptable_topics}
         self.gettable_mapping = {x : receiving_mapping[x]['link'] for x in gettable_topics}
 
         # Handle gettable topics
@@ -193,14 +194,14 @@ class VizierNode:
         else:
             self.logger.error('Requested topic (%s) not in offerable topics.', topic)
 
-    def get_data(topic, retries=1, timeout=5):
+    def get_data(self, topic, retries=1, timeout=5):
         message = self._get_request(topic, retries=retries, timeout=timeout)
         return message["body"]
 
     def subscribe_with_queue(self, topic):
         q = None
-        if(topic in self.receivable_mapping):
-            actual_topic = self.receivable_mapping[topic]
+        if(topic in self.subscribable_mapping):
+            actual_topic = self.subscribable_mapping[topic]
             _, q = self.mqtt_client.subscribe()
         else:
             self.logger.error('Requested topic (%s) not in received topics')
@@ -209,9 +210,11 @@ class VizierNode:
 
     def subscribe_with_callback(self, topic, callback):
 
-        if(topic in self.receive_mapping):
-            actual_topic = self.receive_mapping[topic]
+        if(topic in self.subscribable_mapping):
+            actual_topic = self.subscribable_mapping[topic]
             self.mqtt_client.subscribe_with_callback(topic, callback)
+        else:
+            self.logger.error('Requested topic (%s) not in received topics')
 
     def unsubscribe(self, topic):
         """
@@ -223,7 +226,13 @@ class VizierNode:
             self.offerable_data.pop(topic)
 
     def get_subscribable_topics(self):
-        return list(self.subscriptable_mapping.keys())
+        return list(self.subscribable_mapping.keys())
+
+    def get_offerable_topics(self):
+        return list(self.offerable_mapping.keys())
+
+    def get_gettable_topics(self):
+        return list(self.gettable_mapping.keys())
 
     def get_publishable_topics(self):
         return list(self.publishable_mapping.keys())
