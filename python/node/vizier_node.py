@@ -70,14 +70,22 @@ class VizierNode:
 
             self.mqtt_client.send_message(link, get_request)
 
-            # Try to decode packet.  Could potentially fail
+            # We expect this to potentially fail with a timeout
             try:
                 mqtt_message = q.get(timeout=timeout)
+            except Exception as e:
+                pass
+
+            # Try to decode packet.  Could potentially fail
+            try:
                 decoded_message = json.loads(mqtt_message.payload.decode(encoding='UTF-8'))
                 break
             except Exception as e:
                 self.logger.error(repr(e))
                 self.logger.error('Malformed network packet')
+
+        if(decoded_message is None):
+            self.logger.error('Get request on topic (%s) failed', topic)
 
         # Make sure that we unsubscribe from the response channel
         self.mqtt_client.unsubscribe(response_link)
