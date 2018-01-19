@@ -13,6 +13,9 @@ import logging.handlers as handlers
 
 logging.basicConfig(format='%(levelname)s %(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
 
+#TODO: Should change the whole 'offer' thing to be PUT/POST-like from HTML.  would
+# actually make sense then.
+
 class VizierNode:
 
     def __init__(self, broker_host, broker_port, node_descriptor, logging_config = None):
@@ -24,11 +27,13 @@ class VizierNode:
         self.host = broker_host
         self.port = broker_port
 
+        # Defines the four kinds of data that we can expect.
         self.publishable_mapping = {}
-        self.offerable_mapping = {}
-        self.offerable_data = {}
         self.gettable_mapping = {}
+        self.puttable_mapping = {}
+        self.puttable_data = {}
 
+        # Define an executor for making requests
         self.executor = futures.ThreadPoolExecutor(max_workers=100)
 
         if(logging_config):
@@ -40,8 +45,8 @@ class VizierNode:
 
     # QUICK CURRY FUNCTION FOR HANDLING GET REQUESTS ON CHANNELS
     def _create_get_handler(self, info):
-        """ Returns a message handler for use as a callback """
-
+        """ Returns a message handler for use as a callback.  Used to
+        respond to GET requests on particular topics."""
         def f(network_message):
 
             try:
@@ -60,7 +65,8 @@ class VizierNode:
         return f
 
     def _get_request(self, link, retries=30, timeout=1):
-
+        """Makes a get request for data on a particular topic.
+        Will try 'retries' amount for 'timeout' seconds."""
         response_link = self.end_point + '/' + link + '/' + 'response'
         _, q = self.mqtt_client.subscribe(response_link)
         decoded_message = None
@@ -93,9 +99,8 @@ class VizierNode:
         self.mqtt_client.unsubscribe(response_link)
         return decoded_message
 
-    def _offer_once(self, link, info):
+    def put(self, link, info):
         """ Offers data on a particular link """
-
         self.logger.info("OFFERING SOMETHING ON: " + link)
 
         self.links[link] = info;
@@ -117,7 +122,7 @@ class VizierNode:
         print(self.expanded_links)
 
         #Subscribe to response channels, then offer up our node descriptor so that the server can grab it
-        self._offer_once(self.end_point + '/node_descriptor', self.node_descriptor)
+        self.put(self.end_point + '/node_descriptor', self.node_descriptor)
 
         #Get final setup information from the server
         requested_links = [x for y in self.expanded_links.values() for x in y['requests']]
@@ -139,22 +144,22 @@ class VizierNode:
         providing_mapping = dict(zip(proposed_links, [x['body'] for x in publish_results]))
         receiving_mapping = dict(zip(requested_links, [x['body'] for x in receive_results]))
 
-        offerable_topics = list(filter(lambda x: providing_mapping[x]['type'] == "DATA", providing_mapping))
+        puttable_topics = list(filter(lambda x: providing_mapping[x]['type'] == "DATA", providing_mapping))
         publishable_topics = list(filter(lambda x: providing_mapping[x]['type'] == "STREAM", providing_mapping))
 
         subscriptable_topics = list(filter(lambda x: receiving_mapping[x]['type'] == "STREAM", receiving_mapping))
         gettable_topics = list(filter(lambda x: receiving_mapping[x]['type'] == "DATA", receiving_mapping))
 
-        self.logger.info('Offerable topics: ' + repr(list(offerable_topics)))
+        self.logger.info('puttable topics: ' + repr(list(puttable_topics)))
         self.logger.info('Publishable topic: ' + repr(list(publishable_topics)))
         self.logger.info('Subscriptable topics: ' + repr(list(subscriptable_topics)))
         self.logger.info('Gettable topics: ' + repr(list(gettable_topics)))
 
-        self.offerable_mapping = {x : providing_mapping[x]['link'] for x in offerable_topics}
-        self.offerable_data = {x : {} for x in offerable_topics}
+        puttable_mapping = {x : providing_mapping[x]['link'] for x in puttable_topics}
+        self.puttable_data = {x : {} for x in puttable_topics}
 
         # Ensure that we can offer data on the topics we said we would
-        for x in offerable_topics:
+        for x in puttable_topics:
 
             def f(network_message):
                 try:
@@ -167,7 +172,7 @@ class VizierNode:
                 # Make sure that we actually got a valid get request
                 if('response' in network_message and 'link' in network_message['response']):
                     response_channel = network_message['response']['link']
-                    json_message = create_vizier_get_response(self.offerable_data[x], message_type="data")
+                    json_message = create_vizier_get_response(self.puttable_data[x], message_type="data")
                     self.mqtt_client.send_message(response_channel, json.dumps(json_message).encode(encoding='UTF-8'))
 
             # Offer data on a particular channel
@@ -191,19 +196,23 @@ class VizierNode:
         else:
             self.logger.error('Requested topic (%s) not in publish mapping.', topic)
 
-    def offer(self, topic, data):
-        # Check to ensure that we can offer on this topic
-        if(topic in self.offerable_data):
+    def post(self, topic, data):
+        """ Kind of like HTML POST.  Updates the data available
+        on a particular DATA topic."""
+        # Check to ensure that we can post on this topic
+        if(topic in self.puttable_data):
             # Set the data that we're currently offering
-            self.offerable_data[topic] = data
+            self.puttable_data[topic] = data
         else:
-            self.logger.error('Requested topic (%s) not in offerable topics.', topic)
+            self.logger.error('Requested topic (%s) not in puttable topics.', topic)
 
     def get_data(self, topic, retries=1, timeout=5):
         message = self._get_request(topic, retries=retries, timeout=timeout)
         return message["body"]
 
     def subscribe_with_queue(self, topic):
+        """Subscribes to a particular topic and returns a queue
+        containing the data."""
         q = None
         if(topic in self.subscribable_mapping):
             actual_topic = self.subscribable_mapping[topic]
@@ -214,7 +223,8 @@ class VizierNode:
         return q
 
     def subscribe_with_callback(self, topic, callback):
-
+        """Subscribes to a particular topic, passing each received message to
+        the callback"""
         if(topic in self.subscribable_mapping):
             actual_topic = self.subscribable_mapping[topic]
             self.mqtt_client.subscribe_with_callback(topic, callback)
@@ -227,14 +237,15 @@ class VizierNode:
         offering, subscribing with a callback, or subscribing with a queue.
         """
         self.mqtt_client.unsubscribe(topic)
-        if(topic in self.offerable_data):
-            self.offerable_data.pop(topic)
+        # Clean up from DATA topics as necessary
+        if(topic in self.puttable_data):
+            self.puttable_data.pop(topic)
 
     def get_subscribable_topics(self):
         return list(self.subscribable_mapping.keys())
 
-    def get_offerable_topics(self):
-        return list(self.offerable_mapping.keys())
+    def get_puttable_topics(self):
+        return list(self.puttable_mapping.keys())
 
     def get_gettable_topics(self):
         return list(self.gettable_mapping.keys())
