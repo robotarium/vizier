@@ -36,6 +36,7 @@ class VizierNode:
         # Define an executor for making requests
         self.executor = futures.ThreadPoolExecutor(max_workers=100)
 
+        # Some logging definitions.  TODO: This probably needs to change at some point.
         if(logging_config):
             logging.configDict(logging_config)
             self.logger = logging.getLogger(__name__)
