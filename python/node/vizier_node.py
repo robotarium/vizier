@@ -59,7 +59,7 @@ class VizierNode:
 
         return f
 
-    def _get_request(self, link, retries=10, timeout=5):
+    def _get_request(self, link, retries=30, timeout=1):
 
         response_link = self.end_point + '/' + link + '/' + 'response'
         _, q = self.mqtt_client.subscribe(response_link)
@@ -109,13 +109,8 @@ class VizierNode:
         """ Stop the MQTT client """
         self.mqtt_client.stop()
 
-    def _wait_for_message(self, channel_queue, timeout=30, retries=5):
-
-        return json.loads(channel_queue.get(timeout=timeout).payload.decode(encoding='UTF-8'))
-
     def connect(self, timeout=5, retries=5):
         """ Connect to the main Vizier server """
-
         # TODO: Don't let this name be hard coded
         setup_channel = 'vizier/setup'
 
