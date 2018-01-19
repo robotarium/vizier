@@ -1,6 +1,3 @@
-import vizier.edfg as edfg
-import vizier.node as node
-import vizier.colors as colors
 import asyncio
 import mqtt_interface.mqttinterface as mqtt
 import pprint
@@ -10,7 +7,6 @@ import json
 import argparse
 import queue
 import collections
-import pprint
 from utils.utils import *
 
 import concurrent.futures as futures

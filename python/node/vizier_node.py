@@ -1,6 +1,5 @@
 import asyncio
 import mqtt_interface.mqttinterface as mqtt
-import mqtt_interface.pipeline as pipeline
 import concurrent.futures as futures
 import functools as ft
 import json
