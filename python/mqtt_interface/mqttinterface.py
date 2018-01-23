@@ -172,6 +172,8 @@ class MQTTInterface:
             self.client.connect(self.host, self.port, self.keep_alive)
         except Exception as e:
             self.logger.error("MQTT client couldn't connect to broker at host: " + repr(self.host) + " port: " + repr(self.port))
+            # Make sure that this thread doesn't keep us alive...
+            p.fulfill(None)
             raise e
 
         # Starts MQTT client in background thread
