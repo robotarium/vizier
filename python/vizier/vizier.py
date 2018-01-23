@@ -27,7 +27,7 @@ class Vizier():
     def __init__(self, host, port):
         logger.info(port)
         self.mqtt_client = mqtt.MQTTInterface(host=host, port=port)
-        self.executor = futures.ThreadPoolExecutor(max_workers=500)
+        self.executor = None
 
     def _node_descriptor_retriever(self, setup_channel, link, timeout=5, retries=5):
         """
@@ -155,6 +155,7 @@ class Vizier():
     def start(self, setup_channel, node_descriptors):
         # Start the MQTT client
         self.mqtt_client.start()
+        self.executor = futures.ThreadPoolExecutor(max_workers=500)
         node_links = self._initialize(setup_channel, *node_descriptors)
         result = None
         if(node_links is not None):

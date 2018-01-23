@@ -33,7 +33,7 @@ class VizierNode:
         self.puttable_data = {}
 
         # Define an executor for making requests
-        self.executor = futures.ThreadPoolExecutor(max_workers=100)
+        self.executor = None
 
         # Some logging definitions.  TODO: This probably needs to change at some point.
         if(logging_config):
@@ -109,6 +109,7 @@ class VizierNode:
     def start(self, timeout=5, retries=5):
         """ Start the MQTT client """
         self.mqtt_client.start()
+        self.executor = futures.ThreadPoolExecutor(max_workers=100)
 
     def stop(self):
         """ Stop the MQTT client """
