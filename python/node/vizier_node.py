@@ -93,7 +93,7 @@ class VizierNode:
                 pass
 
         if(decoded_message is None):
-            self.logger.error('Get request on topic (%s) failed', topic)
+            self.logger.error('Get request on topic (%s) failed', link)
 
         # Make sure that we unsubscribe from the response channel
         self.mqtt_client.unsubscribe(response_link)
