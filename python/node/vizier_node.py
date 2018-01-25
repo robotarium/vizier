@@ -193,7 +193,7 @@ class VizierNode:
 
         if(topic in self.publishable_mapping):
             actual_topic = self.publishable_mapping[topic]
-            self.mqtt_client.send_message(actual_topic, json.dumps(data).encode(encoding='UTF-8'))
+            self.mqtt_client.send_message(actual_topic, data)
         else:
             self.logger.error('Requested topic (%s) not in publish mapping.', topic)
 
