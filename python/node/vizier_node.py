@@ -15,9 +15,29 @@ logging.basicConfig(format='%(levelname)s %(asctime)s %(message)s', datefmt='%m/
 #TODO: Should change the whole 'offer' thing to be PUT/POST-like from HTML.  would
 # actually make sense then.
 
+#TODO: New infrastructure.  Make dedicated channels node/requests node/responses/<id>
+# Format will be
+# RESPONSE should be on node/responses/id
+
+#{
+#  "id": "<Request ID>",
+#  "status": "<status code>",
+#  "body": "<response body>"
+#}
+# REQUEST BELOW. RESPONSE ABOVE
+# REQUEST should be on node/requests
+#{
+#  "id": "<Request ID>",
+#  "method": "<method>",
+#  "resource": "<resource>",
+#  "agent": "<user agent>",
+#  "body": "<request body>"
+#}
+
 class VizierNode:
 
     def __init__(self, broker_host, broker_port, node_descriptor, logging_config = None):
+
         self.mqtt_client = mqtt.MQTTInterface(port=broker_port, host=broker_host)
         self.node_descriptor = node_descriptor
         self.end_point = node_descriptor["end_point"]
@@ -25,6 +45,10 @@ class VizierNode:
         self.links = {}
         self.host = broker_host
         self.port = broker_port
+
+        # Library-level defintions 
+        self.request_channel = self.end_point + '/' + 'requests'
+        self.response_channel_base = self.end_point + '/' + 'responses' 
 
         # Defines the four kinds of data that we can expect.
         self.publishable_mapping = {}
@@ -42,6 +66,43 @@ class VizierNode:
         else:
             self.logger = logging.getLogger(__name__)
             self.logger.setLevel(logging.DEBUG)
+        # Make request handler 
+        def request_handler(network_message):
+            try:
+                decoded_message = json.loads(network_message.payload.decode(encoding='UTF-8'))
+
+                # Check to make sure that it's a valid request
+                if('id' not in decoded_message):
+                    pass
+                 else:
+                    message_id = decoded_message['id']
+
+                if('method' not in decoded_message):
+                    pass
+                else:
+                    method = decoded_message['method']
+
+                if('uri' not in decoded_message:
+                    pass
+                else:
+                    uri = decoded_message['uri']
+                 # We have a valid request at this point 
+
+                 if(method is 'GET'):
+                    if(uri in self.expanded_links):
+                        # If we have any record of this URI
+
+                 #TODO: Fill in other methods
+            except Exception as e:
+                print(repr(e))
+
+
+    # Requests handler 
+    def _create_request_handler(self, info):
+
+        def f(network_message):
+            # Look up the method.  Make sure permissions are good.  Do something with the body 
+            # Respond either way on the channel node/requests/<id>
 
     # QUICK CURRY FUNCTION FOR HANDLING GET REQUESTS ON CHANNELS
     def _create_get_handler(self, info):

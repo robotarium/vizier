@@ -4,9 +4,10 @@
   {
     "/a_sub" :
     {
-      "links" : {},
+      "body": "",
       "type": "STREAM"
     }
   },
-  "requests" : []
+  "requests" : [],
+  "version" : "0.2"
 }
