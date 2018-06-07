@@ -70,31 +70,36 @@ class VizierNode:
         def request_handler(network_message):
             try:
                 decoded_message = json.loads(network_message.payload.decode(encoding='UTF-8'))
+            except Exception as e:
+            #TODO: Put actual logging here 
+             print(repr(e))
 
-                # Check to make sure that it's a valid request
-                if('id' not in decoded_message):
-                    pass
-                 else:
-                    message_id = decoded_message['id']
+           # Check to make sure that it's a valid request
+            if('id' not in decoded_message):
+                pass
+            else:
+                message_id = decoded_message['id']
 
-                if('method' not in decoded_message):
-                    pass
-                else:
-                    method = decoded_message['method']
+            if('method' not in decoded_message):
+                pass
+            else:
+                method = decoded_message['method']
 
-                if('uri' not in decoded_message:
-                    pass
-                else:
-                    uri = decoded_message['uri']
-                 # We have a valid request at this point 
+            if('uri' not in decoded_message:
+                pass
+            else:
+                uri = decoded_message['uri']
+
+            # We have a valid request at this point 
 
                  if(method is 'GET'):
+                    # Handle the get request by looking for information under the specified URI
                     if(uri in self.expanded_links):
-                        # If we have any record of this URI
-
+                        # If we have any record of this URI, create a response message 
+                        response = create_vizier_response(502, self.expanded_links['uri']['body'], 'DATA')
+                        response_channel = create_response_channel(self.response_channel_base, message_id)
+                        self.mqtt_client.publish(response_channel, json.dumps(response.encode(encoding='UTF-8')))
                  #TODO: Fill in other methods
-            except Exception as e:
-                print(repr(e))
 
 
     # Requests handler 

@@ -12,7 +12,7 @@ def create_vizier_error_message(error_string):
 
     return {"type" : "ERROR", "message" : error_string}
 
-def create_vizier_response(status, body, topic_type):
+def create_response(status, body, topic_type):
     """body: JSON dict (JSON-formatted dict to be transmitted with message)
     stats: int (status cod for response)
     -> JSON dict (in the vizier response format)"""
@@ -27,7 +27,7 @@ def create_response_channel(base, message_id):
 
     return base + '/' + message_id
 
-def create_vizier_request(request_id, method, uri, body):
+def create_request(request_id, method, uri, body):
     """
     Create vizier request message.
     id: string (unique identifier for request.  Should be something large and random)
@@ -62,40 +62,52 @@ def create_vizier_get_response(body, message_type="data"):
     return {"type" : message_type, "body" : body}
 
 #TODO: Change this to something sane
-def is_link_subset_of(path, link):
-    """ Checks if a link is a subset of the current path (directory wise) """
+def is_subset_of(superset, subset):
+    """ Checks if subset is a subset of superset
 
-    if(len(path) == 0):
+    superset: string (separated by /)
+    subset: string (separated by /)
+    -> bool (indicating whether the relation holds)"""
+
+    if(len(subset) == 0):
         return True
 
-    path_tokens = path.split('/')
-    link_tokens = link.split('/')
+    superset_split = path.split('/')
+    subset_split = link.split('/')
 
-    for i in range(len(path_tokens)):
-        if(link_tokens[i] != path_tokens[i]):
+    for i in range(len(subset_split)):
+        if(subset_split[i] != superset_split[i]):
             return False
 
     return True
 
 #TODO: This is kind of bizarre as well.  Change this. Actually, probbaly just put this in the generate function.
-def expand_path(path, link):
-    """
-    Expands path to absolute or local
-    """
-    if(link[0] == '/'):
-        return path + link
+def combine_paths(base, path):
+    """Expands path to absolute or local
+
+    base: string (base path in absolute format)
+    path: string (path in absolute or relative format)
+    -> string (path in absolute format)"""
+
+    if(path[0] == '/'):
+        return base + path
     else:
-        return link
+        return path
 
 #TODO: Change this to reflect new descriptor files.  Namely, so many valid topics shouldn't be generated with the new format
 def generate_links_from_descriptor(descriptor):
-    """
-    Recursively parses a descriptor file, expanding links as it goes.  This function will
+    """Recursively parses a descriptor file, expanding links as it goes.  This function will
     also check to ensure that all specified paths are valid, with respect to the local node.
-    """
+
+   descriptor: dict (in the node descriptor format)
+    -> dict (containing the non-recursively defined URIs)"""
+
+    #TODO: Check if the type field is present to determine whether it's a valid link or not
+    #TODO: Update to new node descriptor format.  Basically, don't worry about requests
+
     def parse_links(path, link, body):
 
-        link = expand_path(path, link)
+        link = combine_paths(path, link)
 
         if not is_link_subset_of(path, link):
             print("Cannot have link that is not a subset of the current path")
@@ -112,17 +124,7 @@ def generate_links_from_descriptor(descriptor):
         for x in body["links"]:
             local_links.update(parse_links(link, x, body["links"][x]))
 
-            # for request in body["links"][x]["requests"]:
-            #     if("response" in request):
-            #         response_link = expand_path(expand_path(link, x), request["response"]["link"])
-            #         if not is_link_subset_of(link, response_link):
-            #             print("Cannot have link that is not a subset of the current path")
-            #             print("Link: " + response_link)
-            #             print("Path: " + link)
-            #             raise ValueError
-            #         request["response"]["link"] = response_link
-
-        #local_links.update({link : body["requests"]})
         return local_links
 
+    # Start recursion with an empty base path, the endpoint name, and the descriptor
     return parse_links("", descriptor["end_point"], descriptor)
