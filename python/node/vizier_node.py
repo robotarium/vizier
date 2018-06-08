@@ -38,17 +38,19 @@ class VizierNode:
 
     def __init__(self, broker_host, broker_port, node_descriptor, logging_config = None):
 
+        # Setting up MQTT client as well as the dicts to hold DATA information
         self.mqtt_client = mqtt.MQTTInterface(port=broker_port, host=broker_host)
         self.node_descriptor = node_descriptor
+        # Store the end point of the node for convenience
         self.end_point = node_descriptor["end_point"]
+        # Recursively expand the links from the provided descriptor file
         self.expanded_links = generate_links_from_descriptor(node_descriptor)
         self.links = {}
         self.host = broker_host
         self.port = broker_port
 
-        # Library-level defintions 
-        self.request_channel = self.end_point + '/' + 'requests'
-        self.response_channel_base = self.end_point + '/' + 'responses' 
+        # Channel on which requests are received 
+        self.request_channel = create_request_channel(self.end_point)
 
         # Defines the four kinds of data that we can expect.
         self.publishable_mapping = {}
@@ -76,31 +78,35 @@ class VizierNode:
 
            # Check to make sure that it's a valid request
             if('id' not in decoded_message):
-                pass
+                # This is an error.  Return from the callback
+                return
             else:
                 message_id = decoded_message['id']
 
             if('method' not in decoded_message):
-                pass
+                # This is an error.  Return from the callback
+                return
             else:
                 method = decoded_message['method']
 
-            if('uri' not in decoded_message:
-                pass
+            if('link' not in decoded_message:
+                # This is an error.  Return from the callback
+                return
             else:
-                uri = decoded_message['uri']
+                requested_link = decoded_message['link']
 
             # We have a valid request at this point 
+            if(method is 'GET'):
+                # Handle the get request by looking for information under the specified URI
+                if(requested_link in self.expanded_links):
+                    # If we have any record of this URI, create a response message 
+                    response = create_vizier_response(502, self.puttable_data[requested_link], 'DATA')
+                    response_channel = create_response_channel(self.end_point, message_id)
+                    self.mqtt_client.publish(response_channel, json.dumps(response.encode(encoding='UTF-8')))
+             #TODO: Fill in other methods
 
-                 if(method is 'GET'):
-                    # Handle the get request by looking for information under the specified URI
-                    if(uri in self.expanded_links):
-                        # If we have any record of this URI, create a response message 
-                        response = create_vizier_response(502, self.expanded_links['uri']['body'], 'DATA')
-                        response_channel = create_response_channel(self.response_channel_base, message_id)
-                        self.mqtt_client.publish(response_channel, json.dumps(response.encode(encoding='UTF-8')))
-                 #TODO: Fill in other methods
-
+        # Subscribe to requests channel with created request handler
+        self.mqtt_client.subscribe_with_callback(self.request_channel, request_handler)
 
     # Requests handler 
     def _create_request_handler(self, info):

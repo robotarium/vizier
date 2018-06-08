@@ -1,9 +1,10 @@
 
-
+# Global definitions for particular key names
 _get_response_types = {"data", "link", "stream"}
 _status_codes = {1, 2, 3 4}
 _methods = {"GET"}
 _response_types = {"DATA", "STREAM"}
+_descriptor_keys = {"type":True, "body":False}
 GetResponseTypeError = ValueError
 
 #TODO: Delete this
@@ -19,24 +20,31 @@ def create_response(status, body, topic_type):
 
     return {"status":status, "body":body, "type":topic_type}
 
-def create_response_channel(base, message_id):
-    """Creates a response to a request message from the base channel and the message id. Base should be in the format <node_name>/responses.
-    base: string (response channel base in format <node_name>/responses
+def create_response_channel(node, message_id):
+    """Creates a response to a request message from the node's name and the message id.
+    node: string (name of the node)
     message_id: string (id of message to determine response channel)
     -> string (concatenated base and message id)"""
 
-    return base + '/' + message_id
+    return '/'.join([node, 'requests', message_id])
 
-def create_request(request_id, method, uri, body):
-    """
-    Create vizier request message.
+def create_request_channel(node):
+    """Creates the appropriate request channel for a given node
+
+    node: string (name of the node "end_point")
+    -> string (the channel on which the request should be published"""
+
+    return '/'.join([node, 'requests'])
+
+def create_request(request_id, method, link, body):
+    """Create vizier request message.
     id: string (unique identifier for request.  Should be something large and random)
     method: string (method for request: GET only for now)
-    uri: string (URI for which request is made)
+    link: string (link for which request is made)
     body: JSON-formatted dict (optional body for request)
-    -> JSON-formatted dict (containing the vizier request message)
-    """
-    return {"id":request_id, "method":method, "uri":uri, "body":body} 
+    -> JSON-formatted dict (containing the vizier request message)"""
+
+    return {"id":request_id, "method":method, "link":link, "body":body}
 
 #TODO: Delete this
 def create_vizier_get_message(link, response_link):
@@ -62,21 +70,18 @@ def create_vizier_get_response(body, message_type="data"):
     return {"type" : message_type, "body" : body}
 
 #TODO: Change this to something sane
-def is_subset_of(superset, subset):
-    """ Checks if subset is a subset of superset
+def is_subpath_of(superpath, subpath, delimiter='/'):
+    """ Checks if subpath is a subpath of superpath
 
-    superset: string (separated by /)
-    subset: string (separated by /)
+    superpath: string (separated by /)
+    subpath: string (separated by /)
     -> bool (indicating whether the relation holds)"""
 
-    if(len(subset) == 0):
-        return True
+    superpath_tokens = path.split(delimiter)
+    subpath_tokens = link.split(delimiter)
 
-    superset_split = path.split('/')
-    subset_split = link.split('/')
-
-    for i in range(len(subset_split)):
-        if(subset_split[i] != superset_split[i]):
+    for i in range(len(subpath_tokens)):
+        if(subpath_tokens[i] != superpath_tokens[i]):
             return False
 
     return True
@@ -94,7 +99,23 @@ def combine_paths(base, path):
     else:
         return path
 
-#TODO: Change this to reflect new descriptor files.  Namely, so many valid topics shouldn't be generated with the new format
+def extract_keys(descriptor):
+    """Extract particular keys from a given descriptor file.  Namely, ignores the links attributes
+
+    descriptor: dict (JSON-formatted for a node descriptor)
+    -> dict (containing certain pre-specified keys to be extracted"""
+
+    extracted = {}
+    if("type" in descriptor):
+        extracted["type"] = descriptor["type"]
+    else:
+        raise ValueError
+
+    if("body" in descriptor):
+        extracted["body"] = descriptor["body"]
+
+    return exctracted
+
 def generate_links_from_descriptor(descriptor):
     """Recursively parses a descriptor file, expanding links as it goes.  This function will
     also check to ensure that all specified paths are valid, with respect to the local node.
@@ -105,24 +126,27 @@ def generate_links_from_descriptor(descriptor):
     #TODO: Check if the type field is present to determine whether it's a valid link or not
     #TODO: Update to new node descriptor format.  Basically, don't worry about requests
 
-    def parse_links(path, link, body):
+    def parse_links(path, link, local_descriptor):
 
         link = combine_paths(path, link)
 
-        if not is_link_subset_of(path, link):
+        if not is_subpath_of(link, path):
             print("Cannot have link that is not a subset of the current path")
             print("Link: " + link)
             print("Path: " + path)
-            raise ValueError
+            raise ValueError_
 
+        # If there are no more links from the current path, terminate the recursion and extract the relevant keys
         if(len(body["links"]) == 0):
-            return {link : {"requests": body["requests"], "type": body["type"]}}
+            return {link : extract_keys(local_descriptor)}
 
-        #Else...
-
+        # Else, recursively process all the links stemming from this one 
         local_links = {}
-        for x in body["links"]:
-            local_links.update(parse_links(link, x, body["links"][x]))
+        for x in local_descriptor["links"]:
+            local_links.update(parse_links(link, x, local_descriptor["links"][x]))
+            # If the base path has a type attribute, include it as a valid link
+            if("type" in local_descriptor):
+                local_links[link] = extract_keys(local_descriptor)
 
         return local_links
 
