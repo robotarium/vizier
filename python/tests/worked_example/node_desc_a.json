@@ -1,0 +1,14 @@
+{
+  "end_point" : "a",
+  "links" :
+  {
+    "/a_sub" :
+    {
+      "requests" : ["b/b_sub"],
+      "links" : {},
+      "type": "STREAM"
+    }
+  },
+  "requests" : [],
+  "version" : "0.2"
+}

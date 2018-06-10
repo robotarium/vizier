@@ -151,7 +151,7 @@ class VizierNode:
         subscriptable_topics = list(filter(lambda x: receiving_mapping[x]['type'] == "STREAM", receiving_mapping))
         gettable_topics = list(filter(lambda x: receiving_mapping[x]['type'] == "DATA", receiving_mapping))
 
-        self.logger.info('puttable topics: ' + repr(list(puttable_topics)))
+        self.logger.info('Puttable topics: ' + repr(list(puttable_topics)))
         self.logger.info('Publishable topic: ' + repr(list(publishable_topics)))
         self.logger.info('Subscriptable topics: ' + repr(list(subscriptable_topics)))
         self.logger.info('Gettable topics: ' + repr(list(gettable_topics)))
@@ -217,7 +217,7 @@ class VizierNode:
         q = None
         if(topic in self.subscribable_mapping):
             actual_topic = self.subscribable_mapping[topic]
-            _, q = self.mqtt_client.subscribe()
+            _, q = self.mqtt_client.subscribe(actual_topic)
         else:
             self.logger.error('Requested topic (%s) not in received topics')
 
