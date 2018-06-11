@@ -22,6 +22,9 @@ logging.basicConfig(format='%(levelname)s %(asctime)s %(message)s', datefmt='%m/
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
+# Vizier -> gets all the node descriptors -> ensures dependencies are met
+# Standardize this to look more like a node that doesn't really connect to anything
+
 class Vizier():
 
     def __init__(self, host, port):
@@ -30,15 +33,18 @@ class Vizier():
         self.executor = None
 
     def _node_descriptor_retriever(self, setup_channel, link, timeout=5, retries=5):
-        """
-        This function creates an asyncio that handles the retrieval of node descriptors from various corresponding nodes.
+        """This function creates an asyncio that handles the retrieval of node descriptors from various corresponding nodes.
         timeout: how long the function waits for a response per retry; so the total time takes timeout * retries.
         retries: how many times to retry waiting for a node descriptor.  In practice, I've actually never had to retry.
-        """
+        -> None"""
 
-        response_channel = setup_channel + '/' + link + '/response'
-        vizier_get = create_vizier_get_message(link, response_channel)
-
+        #response_channel = setup_channel + '/' + link + '/response'
+        #vizier_get = create_vizier_get_message(link, response_channel)
+        to_node = link.split('/')[0]
+        message_id = create_message_id()
+        get_request = json.dumps(create_request(message_id, 'GET', link, {})).encode(encoding='UTF-8')
+        request_channel = create_request_channel(to_node)
+        response_channel = create_response_channel(to_node, message_id)
         # Subscribe to the response channel
         _, q = self.mqtt_client.subscribe(response_channel)
 
@@ -48,7 +54,7 @@ class Vizier():
         for i in range(retries):
             try:
                 # Send a message to the node descriptor channel, which should illicit a response
-                self.mqtt_client.send_message(link, json.dumps(vizier_get).encode(encoding='UTF-8'))
+                self.mqtt_client.send_message(link, get_request)
                 # Try to get a message on the response channel
                 mqtt_message = q.get(timeout=timeout)
                 # Load/decode the message from byte array -> python
@@ -65,11 +71,9 @@ class Vizier():
         return message
 
     def _initialize(self, setup_channel, *node_descriptors):
-        """
-        Constructs a network given the nodes in node descriptors.  This function depends
+        """Constructs a network given the nodes in node descriptors.  This function depends
         on each node offering its node descriptor properly.  Each node descriptor should
-        always be offered.
-        """
+        always be offered."""
 
         # Retrieve all the node descriptor from the supplied ones that we're expecting
         node_descriptor_links = [nd + "/node_descriptor" for nd in node_descriptors]

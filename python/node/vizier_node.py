@@ -34,6 +34,8 @@ logging.basicConfig(format='%(levelname)s %(asctime)s %(message)s', datefmt='%m/
 #  "body": "<request body>"
 #}
 
+_http_codes = {'success':200, 'not_found':404}
+
 class VizierNode:
 
     def __init__(self, broker_host, broker_port, node_descriptor, logging_config = None):
@@ -44,8 +46,8 @@ class VizierNode:
         # Store the end point of the node for convenience
         self.end_point = node_descriptor["end_point"]
         # Recursively expand the links from the provided descriptor file
-        self.expanded_links = generate_links_from_descriptor(node_descriptor)
-        self.links = {}
+        self.expanded_links, self.requested_links = generate_links_from_descriptor(node_descriptor)
+        self.links = {} #TODO: Roll this into the expanded links
         self.host = broker_host
         self.port = broker_port
 
@@ -68,39 +70,44 @@ class VizierNode:
         else:
             self.logger = logging.getLogger(__name__)
             self.logger.setLevel(logging.DEBUG)
+
         # Make request handler 
         def request_handler(network_message):
             try:
                 decoded_message = json.loads(network_message.payload.decode(encoding='UTF-8'))
             except Exception as e:
             #TODO: Put actual logging here 
-             print(repr(e))
+                self.logger.error('Received undecodable network message in request handler')
 
            # Check to make sure that it's a valid request
             if('id' not in decoded_message):
                 # This is an error.  Return from the callback
+                self.logger.error("Request received without valid id")
                 return
             else:
                 message_id = decoded_message['id']
 
             if('method' not in decoded_message):
                 # This is an error.  Return from the callback
+                self.logger.error('Request received without valid method')
                 return
             else:
                 method = decoded_message['method']
 
-            if('link' not in decoded_message:
+            if('link' not in decoded_message):
                 # This is an error.  Return from the callback
+                self.logger.error('Request received without valid link')
                 return
             else:
                 requested_link = decoded_message['link']
 
             # We have a valid request at this point 
             if(method is 'GET'):
+                self.logger.info('Received GET request for topic %s' % requested_link)
                 # Handle the get request by looking for information under the specified URI
                 if(requested_link in self.expanded_links):
                     # If we have any record of this URI, create a response message 
-                    response = create_vizier_response(502, self.puttable_data[requested_link], 'DATA')
+                    response = create_vizier_response(_http_codes['success'], self.puttable_data[requested_link]['body'], self.puttable_data[requested_link]['type'])
                     response_channel = create_response_channel(self.end_point, message_id)
                     self.mqtt_client.publish(response_channel, json.dumps(response.encode(encoding='UTF-8')))
              #TODO: Fill in other methods
@@ -108,13 +115,7 @@ class VizierNode:
         # Subscribe to requests channel with created request handler
         self.mqtt_client.subscribe_with_callback(self.request_channel, request_handler)
 
-    # Requests handler 
-    def _create_request_handler(self, info):
-
-        def f(network_message):
-            # Look up the method.  Make sure permissions are good.  Do something with the body 
-            # Respond either way on the channel node/requests/<id>
-
+    #TODO: Delete this
     # QUICK CURRY FUNCTION FOR HANDLING GET REQUESTS ON CHANNELS
     def _create_get_handler(self, info):
         """ Returns a message handler for use as a callback.  Used to
@@ -136,14 +137,22 @@ class VizierNode:
 
         return f
 
+    #TODO: Delete this method
     def _get_request(self, link, retries=30, timeout=1):
         """Makes a get request for data on a particular topic.
         Will try 'retries' amount for 'timeout' seconds."""
-        response_link = self.end_point + '/' + link + '/' + 'response'
+
+        tokens = link.split('/')
+        to_node = tokens[0]
+        message_id = create_messasge_id()
+        request_channel = create_request_channel(to_node)
+        response_link = create_response_channel(to_node, message_id)
+
         _, q = self.mqtt_client.subscribe(response_link)
         decoded_message = None
         get_request = json.dumps(create_vizier_get_message(link, response_link)).encode(encoding='UTF-8')
 
+        # Repeat request a number of times based on the specified number of retries
         for _ in range(retries):
 
             self.mqtt_client.send_message(link, get_request)
@@ -153,6 +162,7 @@ class VizierNode:
                 mqtt_message = q.get(timeout=timeout)
             except Exception as e:
                 # Don't try to decode message if we didn't get anything
+                self.logger.info('Retrying GET request for node (%s) for link (%s)' % (to_node, link))
                 continue
 
             # Try to decode packet.  Could potentially fail
@@ -161,35 +171,44 @@ class VizierNode:
                 break
             except Exception as e:
                 # Just pass here because we expect to fail.  In the future,
-                # split the exceptions up into reasonable cases.
+                # split the exceptions up into reasonable cases
+                self.logger.error('Couldn\'t decode network message').
                 pass
 
         if(decoded_message is None):
             self.logger.error('Get request on topic (%s) failed', link)
 
-        # Make sure that we unsubscribe from the response channel
+        # Make sure that we unsubscribe from the response channel, and, finally, return the decoded message
         self.mqtt_client.unsubscribe(response_link)
         return decoded_message
 
+    # TODO: I think that this method should definitely be removed in favor of post
     def put(self, link, info):
-        """ Offers data on a particular link """
-        self.logger.info("OFFERING SOMETHING ON: " + link)
+        """Offers data on a particular link
+        link: string (link on which to place data)
+        info: dict (data to place on the link)
+        -> None"""
 
-        self.links[link] = info;
-        self.mqtt_client.subscribe_with_callback(link, self._create_get_handler(info))
+       # Ensure that the link has been specified by the node descriptor
+        if(link in self.expanded_links):
+            # This operation should be threadsafe (for future reference)
+            self.links[link] = info
+            self.logger.info('Put something on link %s' % link)
+            #self.mqtt_client.subscribe_with_callback(link, self._create_get_handler(info))
 
-    def start(self, timeout=5, retries=5):
-        """ Start the MQTT client """
+    def start(self):
+        """Start the MQTT client
+        -> None"""
         self.mqtt_client.start()
         self.executor = futures.ThreadPoolExecutor(max_workers=100)
 
     def stop(self):
-        """ Stop the MQTT client """
+        """Stop the MQTT client"""
         self.mqtt_client.stop()
 
     def connect(self, timeout=5, retries=5):
-        """ Connect to the main Vizier server """
-        # TODO: Don't let this name be hard coded
+        """Connect to the main Vizier server"""
+        # TODO: Don't let this name be hard coded.  Put this somewhere else
         setup_channel = 'vizier/setup'
 
         print(self.expanded_links)
@@ -198,12 +217,12 @@ class VizierNode:
         self.put(self.end_point + '/node_descriptor', self.node_descriptor)
 
         #Get final setup information from the server
-        requested_links = [x for y in self.expanded_links.values() for x in y['requests']]
+        #requested_links = [x for y in self.expanded_links.values() for x in y['requests']]
         proposed_links = self.expanded_links.keys()
 
         # Get final publish and receive names from server
         publish_results = list(self.executor.map(lambda x: self._get_request('vizier/' + x), proposed_links))
-        receive_results = list(self.executor.map(lambda x: self._get_request('vizier/' + x), requested_links))
+        receive_results = list(self.executor.map(lambda x: self._get_request('vizier/' + x), self.requested_links))
 
         if(None in publish_results):
             self.logger.error("Couldn't get all publish requests")
@@ -215,7 +234,7 @@ class VizierNode:
 
         # We need to account for subscribing, publishing, and getting
         providing_mapping = dict(zip(proposed_links, [x['body'] for x in publish_results]))
-        receiving_mapping = dict(zip(requested_links, [x['body'] for x in receive_results]))
+        receiving_mapping = dict(zip(self.requested_links, [x['body'] for x in receive_results]))
 
         puttable_topics = list(filter(lambda x: providing_mapping[x]['type'] == "DATA", providing_mapping))
         publishable_topics = list(filter(lambda x: providing_mapping[x]['type'] == "STREAM", providing_mapping))
@@ -231,25 +250,24 @@ class VizierNode:
         puttable_mapping = {x : providing_mapping[x]['link'] for x in puttable_topics}
         self.puttable_data = {x : {} for x in puttable_topics}
 
+        # This seems super unnecessary now
         # Ensure that we can offer data on the topics we said we would
-        for x in puttable_topics:
+        #for x in puttable_topics:
+        #    def f(network_message):
+        #        try:
+        #            network_message = json.loads(network_message.payload.decode(encoding='UTF-8'))
+        #        except Exception as e:
+        #            # TODO: (PAUL) Change the logger to be passed into function
+        #            self.logger.error("Got malformed network message")
 
-            def f(network_message):
-                try:
-                    network_message = json.loads(network_message.payload.decode(encoding='UTF-8'))
-                except Exception as e:
-                    # TODO: (PAUL) Change the logger to be passed into function
-                    logger = logging.getLogger(__name__)
-                    logger.error("Got malformed network message")
-
-                # Make sure that we actually got a valid get request
-                if('response' in network_message and 'link' in network_message['response']):
-                    response_channel = network_message['response']['link']
-                    json_message = create_vizier_get_response(self.puttable_data[x], message_type="data")
-                    self.mqtt_client.send_message(response_channel, json.dumps(json_message).encode(encoding='UTF-8'))
+        #        # Make sure that we actually got a valid get request
+        #        if('response' in network_message and 'link' in network_message['response']):
+        #            response_channel = network_message['response']['link']
+        #            json_message = create_vizier_get_response(self.puttable_data[x], message_type="data")
+        #            self.mqtt_client.send_message(response_channel, json.dumps(json_message).encode(encoding='UTF-8'))
 
             # Offer data on a particular channel
-            self.mqtt_client.subscribe_with_callback(x, f)
+        #    self.mqtt_client.subscribe_with_callback(x, f)
 
         self.publishable_mapping = {x : providing_mapping[x]['link'] for x in publishable_topics}
         self.subscribable_mapping = {x : receiving_mapping[x]['link'] for x in subscriptable_topics}
@@ -262,25 +280,29 @@ class VizierNode:
         return True
 
     def publish(self, topic, data):
-
+        """Publish data on a particular topic, if the topic is in the topics on which this node is allowed to publish
+        topic: string (topic on which to publish)
+        data: bytes (data to send on topic)
+        -> None"""
         if(topic in self.publishable_mapping):
             actual_topic = self.publishable_mapping[topic]
             self.mqtt_client.send_message(actual_topic, data)
         else:
-            self.logger.error('Requested topic (%s) not in publish mapping.', topic)
+            self.logger.error('Requested topic (%s) not in publish mapping', topic)
 
+    # TODO: Maybe delete this?
     def post(self, topic, data):
-        """ Kind of like HTML POST.  Updates the data available
+        """Kind of like HTML POST.  Updates the data available
         on a particular DATA topic."""
         # Check to ensure that we can post on this topic
         if(topic in self.puttable_data):
             # Set the data that we're currently offering
             self.puttable_data[topic] = data
         else:
-            self.logger.error('Requested topic (%s) not in puttable topics.', topic)
+            self.logger.error('Requested topic (%s) not in puttable topics', topic)
 
     def get_data(self, topic, retries=1, timeout=5):
-        message = self._get_request(topic, retries=retries, timeout=timeout)
+        message = self._get_request(topic, retries=retries, tieout=timeout)
         return message["body"]
 
     def subscribe_with_queue(self, topic):
@@ -305,10 +327,8 @@ class VizierNode:
             self.logger.error('Requested topic (%s) not in received topics')
 
     def unsubscribe(self, topic):
-        """
-        Unsubscrbes from a particular topic.  This will remove any effects from
-        offering, subscribing with a callback, or subscribing with a queue.
-        """
+        """Unsubscrbes from a particular topic.  This will remove any effects from
+        offering, subscribing with a callback, or subscribing with a queue."""
         self.mqtt_client.unsubscribe(topic)
         # Clean up from DATA topics as necessary
         if(topic in self.puttable_data):

@@ -1,7 +1,10 @@
+import binascii
+import os
+
 
 # Global definitions for particular key names
 _get_response_types = {"data", "link", "stream"}
-_status_codes = {1, 2, 3 4}
+_status_codes = {1, 2, 3, 4}
 _methods = {"GET"}
 _response_types = {"DATA", "STREAM"}
 _descriptor_keys = {"type":True, "body":False}
@@ -12,6 +15,9 @@ def create_vizier_error_message(error_string):
     """Create a vizier error message for use when dependencies are not met, etc."""
 
     return {"type" : "ERROR", "message" : error_string}
+
+def create_message_id():
+    return binascii.hexlify(os.urandom(20)).decode()
 
 def create_response(status, body, topic_type):
     """body: JSON dict (JSON-formatted dict to be transmitted with message)
@@ -26,7 +32,7 @@ def create_response_channel(node, message_id):
     message_id: string (id of message to determine response channel)
     -> string (concatenated base and message id)"""
 
-    return '/'.join([node, 'requests', message_id])
+    return '/'.join([node, 'responses', message_id])
 
 def create_request_channel(node):
     """Creates the appropriate request channel for a given node
@@ -77,8 +83,12 @@ def is_subpath_of(superpath, subpath, delimiter='/'):
     subpath: string (separated by /)
     -> bool (indicating whether the relation holds)"""
 
-    superpath_tokens = path.split(delimiter)
-    subpath_tokens = link.split(delimiter)
+    # Special case
+    if(subpath == ''):
+        return True
+
+    superpath_tokens = superpath.split(delimiter)
+    subpath_tokens = subpath.split(delimiter)
 
     for i in range(len(subpath_tokens)):
         if(subpath_tokens[i] != superpath_tokens[i]):
@@ -106,15 +116,17 @@ def extract_keys(descriptor):
     -> dict (containing certain pre-specified keys to be extracted"""
 
     extracted = {}
-    if("type" in descriptor):
-        extracted["type"] = descriptor["type"]
+    if('type' in descriptor):
+        extracted['type'] = descriptor['type']
     else:
         raise ValueError
 
-    if("body" in descriptor):
-        extracted["body"] = descriptor["body"]
+    #if('body' in descriptor):
+    #    extracted['body'] = descriptor['body']
+    #else:
+        #extracted['body'] = {}
 
-    return exctracted
+    return extracted
 
 def generate_links_from_descriptor(descriptor):
     """Recursively parses a descriptor file, expanding links as it goes.  This function will
@@ -134,10 +146,10 @@ def generate_links_from_descriptor(descriptor):
             print("Cannot have link that is not a subset of the current path")
             print("Link: " + link)
             print("Path: " + path)
-            raise ValueError_
+            raise ValueError
 
         # If there are no more links from the current path, terminate the recursion and extract the relevant keys
-        if(len(body["links"]) == 0):
+        if(len(local_descriptor["links"]) == 0):
             return {link : extract_keys(local_descriptor)}
 
         # Else, recursively process all the links stemming from this one 
@@ -151,4 +163,11 @@ def generate_links_from_descriptor(descriptor):
         return local_links
 
     # Start recursion with an empty base path, the endpoint name, and the descriptor
-    return parse_links("", descriptor["end_point"], descriptor)
+    expanded_links = parse_links("", descriptor["end_point"], descriptor)
+
+    # Ensure that requests are present
+
+    if('requests' not in descriptor):
+        raise ValueError
+
+    return expanded_links, descriptor['requests']
