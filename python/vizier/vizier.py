@@ -1,50 +1,47 @@
-import asyncio
 import mqtt_interface.mqttinterface as mqtt
 import pprint
 import functools as ft
-import time
 import json
-import argparse
-import queue
 import collections
-from utils.utils import *
-
+from utils import utils
+import vizier.base_node as base_node
 import concurrent.futures as futures
 
 ### For logging ###
 import logging
 import logging.handlers as handlers
 
-### LOGGING ###
-
+# Setting up the desired logging format and debug level
 logging.basicConfig(format='%(levelname)s %(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
-
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-# Vizier -> gets all the node descriptors -> ensures dependencies are met
-# Standardize this to look more like a node that doesn't really connect to anything
+# TODO: Vizier -> gets all the node descriptors -> ensures dependencies are met
+# TODO: Standardize this to look more like a node that doesn't really connect to anything
 
-class Vizier():
+class Vizier(base_node.BaseNode):
 
-    def __init__(self, host, port):
+    def __init__(self, host, port, *nodes):
+        # Auto-generate this descriptor based on the nodes
+        vizier_descriptor = {}
+        super(host, port, vizier_descriptor).__init__() # Same as super(Vizier, self).__init__(...)
         logger.info(port)
         self.mqtt_client = mqtt.MQTTInterface(host=host, port=port)
         self.executor = None
 
+    # TODO: Do this as a series of GET requests rather than naming it a bunch of different stuff.  Take advantage of the inheritance
+    # from the BaseNode class
     def _node_descriptor_retriever(self, setup_channel, link, timeout=5, retries=5):
         """This function creates an asyncio that handles the retrieval of node descriptors from various corresponding nodes.
         timeout: how long the function waits for a response per retry; so the total time takes timeout * retries.
         retries: how many times to retry waiting for a node descriptor.  In practice, I've actually never had to retry.
         -> None"""
 
-        #response_channel = setup_channel + '/' + link + '/response'
-        #vizier_get = create_vizier_get_message(link, response_channel)
         to_node = link.split('/')[0]
         message_id = create_message_id()
-        get_request = json.dumps(create_request(message_id, 'GET', link, {})).encode(encoding='UTF-8')
-        request_channel = create_request_channel(to_node)
-        response_channel = create_response_channel(to_node, message_id)
+        get_request = json.dumps(utils.create_request(message_id, 'GET', link, {})).encode(encoding='UTF-8')
+        request_channel = utils.create_request_link(to_node)
+        response_channel = utils.create_response_link(to_node, message_id)
         # Subscribe to the response channel
         _, q = self.mqtt_client.subscribe(response_channel)
 

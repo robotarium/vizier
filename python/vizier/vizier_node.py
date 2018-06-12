@@ -51,7 +51,7 @@ class VizierNode:
         self.host = broker_host
         self.port = broker_port
 
-        # Channel on which requests are received
+        # Channel on which requests are received 
         self.request_channel = create_request_channel(self.end_point)
 
         # Defines the four kinds of data that we can expect.
@@ -71,12 +71,12 @@ class VizierNode:
             self.logger = logging.getLogger(__name__)
             self.logger.setLevel(logging.DEBUG)
 
-        # Make request handler
+        # Make request handler 
         def request_handler(network_message):
             try:
                 decoded_message = json.loads(network_message.payload.decode(encoding='UTF-8'))
             except Exception as e:
-            #TODO: Put actual logging here
+            #TODO: Put actual logging here 
                 self.logger.error('Received undecodable network message in request handler')
 
            # Check to make sure that it's a valid request
@@ -101,12 +101,12 @@ class VizierNode:
             else:
                 requested_link = decoded_message['link']
 
-            # We have a valid request at this point
+            # We have a valid request at this point 
             if(method is 'GET'):
                 self.logger.info('Received GET request for topic %s' % requested_link)
                 # Handle the get request by looking for information under the specified URI
                 if(requested_link in self.expanded_links):
-                    # If we have any record of this URI, create a response message
+                    # If we have any record of this URI, create a response message 
                     response = create_vizier_response(_http_codes['success'], self.puttable_data[requested_link]['body'], self.puttable_data[requested_link]['type'])
                     response_channel = create_response_channel(self.end_point, message_id)
                     self.mqtt_client.publish(response_channel, json.dumps(response.encode(encoding='UTF-8')))

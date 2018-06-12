@@ -7,26 +7,30 @@ _get_response_types = {"data", "link", "stream"}
 _status_codes = {1, 2, 3, 4}
 _methods = {"GET"}
 _response_types = {"DATA", "STREAM"}
-_descriptor_keys = {"type":True, "body":False}
+_descriptor_keys = {"type": True, "body": False}
 GetResponseTypeError = ValueError
 
-#TODO: Delete this
+
+# TODO: Delete this
 def create_vizier_error_message(error_string):
     """Create a vizier error message for use when dependencies are not met, etc."""
 
-    return {"type" : "ERROR", "message" : error_string}
+    return {"type": "ERROR", "message": error_string}
+
 
 def create_message_id():
     return binascii.hexlify(os.urandom(20)).decode()
+
 
 def create_response(status, body, topic_type):
     """body: JSON dict (JSON-formatted dict to be transmitted with message)
     stats: int (status cod for response)
     -> JSON dict (in the vizier response format)"""
 
-    return {"status":status, "body":body, "type":topic_type}
+    return {"status": status, "body": body, "type": topic_type}
 
-def create_response_channel(node, message_id):
+
+def create_response_link(node, message_id):
     """Creates a response to a request message from the node's name and the message id.
     node: string (name of the node)
     message_id: string (id of message to determine response channel)
@@ -34,13 +38,15 @@ def create_response_channel(node, message_id):
 
     return '/'.join([node, 'responses', message_id])
 
-def create_request_channel(node):
+
+def create_request_link(node):
     """Creates the appropriate request channel for a given node
 
     node: string (name of the node "end_point")
     -> string (the channel on which the request should be published"""
 
     return '/'.join([node, 'requests'])
+
 
 def create_request(request_id, method, link, body):
     """Create vizier request message.
@@ -50,32 +56,9 @@ def create_request(request_id, method, link, body):
     body: JSON-formatted dict (optional body for request)
     -> JSON-formatted dict (containing the vizier request message)"""
 
-    return {"id":request_id, "method":method, "link":link, "body":body}
+    return {"id": request_id, "method": method, "link": link, "body": body}
 
-#TODO: Delete this
-def create_vizier_get_message(link, response_link):
-    """
-    Create a vizier get message.  The response to the get message will come on the response_link.
 
-    link: string (link from which data is retrieved)
-    response_link: string (link to which response is sent)
-    """
-    return {"type" : "GET", "link" : link, "response" : {"type" : "RESPONSE", "link" : response_link}}
-
-#TODO: Delete this
-def create_vizier_get_response(body, message_type="data"):
-    """
-    Create a response to a get message.  The response message can be data, a link, or a stream of data
-    which looks identitcal to a link.  Thus, we add the types into the mix.
-    """
-
-    #Check if the supplied type is within the set of types allowed
-    if(message_type not in _get_response_types):
-        raise GetResponseTypeError("Type: " + repr(message_type) + " is not a valid get response type")
-
-    return {"type" : message_type, "body" : body}
-
-#TODO: Change this to something sane
 def is_subpath_of(superpath, subpath, delimiter='/'):
     """ Checks if subpath is a subpath of superpath
 
@@ -96,7 +79,7 @@ def is_subpath_of(superpath, subpath, delimiter='/'):
 
     return True
 
-#TODO: This is kind of bizarre as well.  Change this. Actually, probbaly just put this in the generate function.
+
 def combine_paths(base, path):
     """Expands path to absolute or local
 
@@ -108,6 +91,7 @@ def combine_paths(base, path):
         return base + path
     else:
         return path
+
 
 def extract_keys(descriptor):
     """Extract particular keys from a given descriptor file.  Namely, ignores the links attributes
@@ -121,12 +105,11 @@ def extract_keys(descriptor):
     else:
         raise ValueError
 
-    #if('body' in descriptor):
-    #    extracted['body'] = descriptor['body']
-    #else:
-        #extracted['body'] = {}
+    # Initialize body to empty dict
+    extracted['body'] = {}
 
     return extracted
+
 
 def generate_links_from_descriptor(descriptor):
     """Recursively parses a descriptor file, expanding links as it goes.  This function will
@@ -135,8 +118,8 @@ def generate_links_from_descriptor(descriptor):
    descriptor: dict (in the node descriptor format)
     -> dict (containing the non-recursively defined URIs)"""
 
-    #TODO: Check if the type field is present to determine whether it's a valid link or not
-    #TODO: Update to new node descriptor format.  Basically, don't worry about requests
+    # TODO: Check if the type field is present to determine whether it's a valid link or not
+    # TODO: Update to new node descriptor format.  Basically, don't worry about requests
 
     def parse_links(path, link, local_descriptor):
 
@@ -150,9 +133,9 @@ def generate_links_from_descriptor(descriptor):
 
         # If there are no more links from the current path, terminate the recursion and extract the relevant keys
         if(len(local_descriptor["links"]) == 0):
-            return {link : extract_keys(local_descriptor)}
+            return {link: extract_keys(local_descriptor)}
 
-        # Else, recursively process all the links stemming from this one 
+        # Else, recursively process all the links stemming from this one
         local_links = {}
         for x in local_descriptor["links"]:
             local_links.update(parse_links(link, x, local_descriptor["links"][x]))
