@@ -18,6 +18,12 @@ logger.setLevel(logging.DEBUG)
 
 # TODO: Vizier -> gets all the node descriptors -> ensures dependencies are met
 # TODO: Standardize this to look more like a node that doesn't really connect to anything
+# TODO:  Supercedes previous two TODOs.  I think that this really needs to be more of an optional
+# thing to use the 'vizier' node.  Forget the security stuff.  This can be handled differently anyway.
+# If you know the topic name, just request that topic explicitly.  If you want a wildcard or something, just
+# do a request to vizier/?/... (or something) to get the requisite information.
+# TODO: Add some sort of query engine to get vizier to give information about the running nodes.  This would
+# Actually be a more useful feature, anyway
 
 class Vizier(base_node.BaseNode):
 

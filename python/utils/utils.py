@@ -149,7 +149,7 @@ def generate_links_from_descriptor(descriptor):
     expanded_links = parse_links("", descriptor["end_point"], descriptor)
 
     # Ensure that requests are present
-
+    # TODO: Push this to the upper function, since it's so simple
     if('requests' not in descriptor):
         raise ValueError
 
