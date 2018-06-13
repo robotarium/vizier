@@ -25,6 +25,7 @@ logger.setLevel(logging.DEBUG)
 # TODO: Add some sort of query engine to get vizier to give information about the running nodes.  This would
 # Actually be a more useful feature, anyway
 
+# This class inherits from base node to reuse some of the functionality
 class Vizier(base_node.BaseNode):
 
     def __init__(self, host, port, *nodes):
