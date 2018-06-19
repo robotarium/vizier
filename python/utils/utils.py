@@ -11,13 +11,6 @@ _descriptor_keys = {"type": True, "body": False}
 GetResponseTypeError = ValueError
 
 
-# TODO: Delete this
-def create_vizier_error_message(error_string):
-    """Create a vizier error message for use when dependencies are not met, etc."""
-
-    return {"type": "ERROR", "message": error_string}
-
-
 def create_message_id():
     return binascii.hexlify(os.urandom(20)).decode()
 
@@ -118,18 +111,14 @@ def generate_links_from_descriptor(descriptor):
    descriptor: dict (in the node descriptor format)
     -> dict (containing the non-recursively defined URIs)"""
 
-    # TODO: Check if the type field is present to determine whether it's a valid link or not
-    # TODO: Update to new node descriptor format.  Basically, don't worry about requests
-
     def parse_links(path, link, local_descriptor):
+        """Sub function to be recursively called to process node descriptor"""
 
         link = combine_paths(path, link)
 
         if not is_subpath_of(link, path):
-            print("Cannot have link that is not a subset of the current path")
-            print("Link: " + link)
-            print("Path: " + path)
-            raise ValueError
+            # We want to ensure that this subset relation holds
+            raise ValueError('Cannot have link (%s) that is not a subset of the current path (%s)' % (link, path))
 
         # If there are no more links from the current path, terminate the recursion and extract the relevant keys
         if(len(local_descriptor["links"]) == 0):
@@ -149,8 +138,7 @@ def generate_links_from_descriptor(descriptor):
     expanded_links = parse_links("", descriptor["end_point"], descriptor)
 
     # Ensure that requests are present
-    # TODO: Push this to the upper function, since it's so simple
     if('requests' not in descriptor):
-        raise ValueError
+        raise ValueError('Keyword requests must be in node descriptor')
 
     return expanded_links, descriptor['requests']

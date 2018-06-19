@@ -172,7 +172,7 @@ class VizierNode:
             except Exception as e:
                 # Just pass here because we expect to fail.  In the future,
                 # split the exceptions up into reasonable cases
-                self.logger.error('Couldn\'t decode network message').
+                self.logger.error('Couldn\'t decode network message')
                 pass
 
         if(decoded_message is None):

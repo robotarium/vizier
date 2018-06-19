@@ -55,7 +55,16 @@ class Node:
 
     def _make_request(self, request_id, method, link, body, retries=30, timeout=1):
         """Makes a get request for data on a particular topic.
-        Will try 'retries' amount for 'timeout' seconds."""
+        Will try 'retries' amount for 'timeout' seconds.
+        request_id: string (uniquely generated key for this message)
+        method: string (method for request)
+        link: string (link on which to make request)
+        body: JSON-formatted dict (dict containing optional body information for the request)
+        retries: int (optional number of retries for the request)
+        timeout: double (optimal timeout to wait for return message)
+
+        -> MQTT message (containing the response to the request)
+        """
 
         tokens = link.split('/')
         to_node = tokens[0]
@@ -214,6 +223,7 @@ class Node:
         self.mqtt_client.subscribe_with_callback(self.request_channel, request_handler)
 
         # Executor for handling multiple GET requests
+        # This may (or may not) be necessary
         self.executor = futures.ThreadPoolExecutor(max_workers=100)
         ids = [utils.create_message_id() for _ in self.requested_links]
         tups = zip(ids, self.requested_links)
@@ -223,10 +233,9 @@ class Node:
         # Ensure that we got all the results we expected
         if(None in receive_results.items()):
             self.logger.error('Could not get all receive requests')
-            raise ValueError
+            raise ValueError('Could not get all receive requests')
 
-        self.logger.info(repr(receive_results))
-
+        #self.logger.info(repr(receive_results))
         self.logger.info('Succesfully connected to vizier network')
 
         # Parse out data/stream topics
