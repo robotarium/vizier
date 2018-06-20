@@ -66,15 +66,13 @@ class Node:
         -> MQTT message (containing the response to the request)
         """
 
+        # Set up request/response link for this request
         tokens = link.split('/')
         to_node = tokens[0]
         request_link = utils.create_request_link(to_node)
         response_link = utils.create_response_link(to_node, request_id)
 
-        print(request_link)
-        print(response_link)
-
-        _, q = self.mqtt_client.subscribe(response_link)
+        q = self.mqtt_client.subscribe(response_link)
         decoded_message = None
         encoded_request = json.dumps(utils.create_request(request_id, method, link, body)).encode(encoding='UTF-8')
 
@@ -106,33 +104,32 @@ class Node:
         self.mqtt_client.unsubscribe(response_link)
         return decoded_message
 
-    # TODO: For now, removed the connection to the server.  Currently treating the server more like a query object than anything.
-    # Can always connect to the server in the future if wildcard functionality is needed
-    def connect(self, timeout=5, retries=5):
-        """Connects to the vizier server, setting up possible links
-        timeout: double (timeout on GET requests)
-        retries: int (number of times to retry GET requests)
-        -> None"""
+    ## TODO: For now, removed the connection to the server.  Currently treating the server more like a query object than anything.
+    ## Can always connect to the server in the future if wildcard functionality is needed
+    #def connect(self, timeout=5, retries=5):
+    #    """Connects to the vizier server, setting up possible links
+    #    timeout: double (timeout on GET requests)
+    #    retries: int (number of times to retry GET requests)
+    #    -> None"""
 
-        ids = [utils.create_message_id() for _ in self.requested_links]
-        tups = zip(ids, self.requested_links)
-        receive_results = dict(zip(self.requested_links,
-                                   self.executor.map(lambda x: self._make_request(x[0], 'GET', x[1], {}, timeout=timeout, retries=retries), tups)))
+    #    ids = [utils.create_message_id() for _ in self.requested_links]
+    #    tups = zip(ids, self.requested_links)
+    #    receive_results = dict(zip(self.requested_links,
+    #                               self.executor.map(lambda x: self._make_request(x[0], 'GET', x[1], {}, timeout=timeout, retries=retries), tups)))
 
-        # Ensure that we got all the results we expected
-        if(None in receive_results.items()):
-            self.logger.error('Could not get all receive requests')
-            return False
+    #    # Ensure that we got all the results we expected
+    #    if(None in receive_results.items()):
+    #        self.logger.error('Could not get all receive requests')
+    #        return False
 
-        self.logger.info(repr(receive_results))
+    #    #self.logger.info(repr(receive_results))
 
-        self.logger.info('Succesfully connected to vizier network')
+    #    self.logger.info('Succesfully connected to vizier network')
 
-        # Parse out data/stream topics
-        self.gettable_links = set(filter(lambda x: receive_results[x]['type'] == 'DATA', receive_results))
-        self.subscribable_links = set(filter(lambda x: receive_results[x]['type'] == 'STREAM', receive_results))
+    #    # Parse out data/stream topics
+    #    self.gettable_links = set(filter(lambda x: receive_results[x]['type'] == 'DATA', receive_results))
+    #    self.subscribable_links = set(filter(lambda x: receive_results[x]['type'] == 'STREAM', receive_results))
 
-    # TODO: I think that this method should definitely be removed in favor of post
     def put(self, link, info):
         """Offers data on a particular link
         link: string (link on which to place data)
@@ -162,13 +159,15 @@ class Node:
             raise ValueError
 
     def start(self, retries=5, timeout=1):
-        """Start the MQTT client
+        """Start the MQTT client and connect to the vizier network
+        retries: int (number of retries for each GET request)
+        timeout: double (timeout for each GET request)
         -> None"""
 
         # Start the MQTT client to ensure we can attach this callback
         self.mqtt_client.start()
 
-        # Make request handler
+        # Make request handler for vizier network
         def request_handler(network_message):
             encountered_error = False
             try:
@@ -208,6 +207,7 @@ class Node:
             # We have a valid request at this point
             if(method == 'GET'):
                 self.logger.info('Received GET request for topic %s' % requested_link)
+                self.logger.info(repr(decoded_message))
                 # Handle the get request by looking for information under the specified URI
                 if(requested_link in self.expanded_links):
                     # If we have any record of this URI, create a response message
@@ -215,7 +215,9 @@ class Node:
                                                      self.expanded_links[requested_link]['body'],
                                                      self.expanded_links[requested_link]['type'])
                     response_channel = utils.create_response_link(self.end_point, message_id)
+                    self.logger.info('Sent message ffrom GET request')
                     self.mqtt_client.send_message(response_channel, json.dumps(response).encode(encoding='UTF-8'))
+                    self.logger.info('Returned from send message function')
 
             # TODO: Fill in other methods
 

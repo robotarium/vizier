@@ -27,8 +27,6 @@ def main():
 
     v_node = node.Node(args.host, args.port, node_descriptor)
     v_node.start()
-    # Connect to the network
-    setup_information = v_node.connect()
 
     print("Publishable topics:", v_node.publishable_links)
     print('Subscriptable topics:', v_node.subscribable_links)

@@ -37,18 +37,15 @@ def main():
 
     node_a = node.Node(args.host, args.port, node_descriptor_a)
     node_a.start()
-    node_a.connect()
 
     node_b = node.Node(args.host, args.port, node_descriptor_b)
     node_b.start()
-    node_b.connect()
 
     print("Publishable topics:", node_b.publishable_links)
     print('Subscriptable topics:', node_b.subscribable_links)
     print("Gettable topics:", node_b.gettable_links)
     print('Offerable topics:', node_b.puttable_links)
 
-    time.sleep(10)
     node_a.stop()
     node_b.stop()
 
