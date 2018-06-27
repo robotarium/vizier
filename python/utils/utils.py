@@ -1,7 +1,6 @@
 import binascii
 import os
 
-
 # Global definitions for particular key names
 _get_response_types = {"data", "link", "stream"}
 _status_codes = {1, 2, 3, 4}
@@ -122,7 +121,8 @@ def generate_links_from_descriptor(descriptor):
 
         # If there are no more links from the current path, terminate the recursion and extract the relevant keys
         if(len(local_descriptor["links"]) == 0):
-            return {link: extract_keys(local_descriptor)}
+            if("type" in local_descriptor):
+                return {link: extract_keys(local_descriptor)}
 
         # Else, recursively process all the links stemming from this one
         local_links = {}

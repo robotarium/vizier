@@ -1,6 +1,7 @@
 import time
 import json
 import vizier.node as node
+import vizier.vizier as vizier
 import unittest
 
 class TestVizierNodes(unittest.TestCase):
@@ -32,23 +33,16 @@ class TestVizierNodes(unittest.TestCase):
     
         self.node_b = node.Node('localhost', 1883, node_descriptor_b)
         self.node_b.start()
+
+        self.vizier = vizier.Vizier('localhost', 1883, ['a', 'b'])
+        self.vizier.start()
    
     def test_publishable_links(self):
-        self.assertEqual(self.node_a.publishable_links, {'a/a_sub'})
-        self.assertEqual(self.node_b.publishable_links, set())
-
-    def test_subscribable_links(self):
-        self.assertEqual(self.node_a.subscribable_links, set())
-        self.assertEqual(self.node_b.subscribable_links, {'a/a_sub'})
-
-    def test_gettable_links(self):
-        self.assertEqual(self.node_a.gettable_links, set())
-        self.assertEqual(self.node_b.gettable_links, set())
-
-    def test_puttable_links(self):
-        self.assertEqual(self.node_a.puttable_links, set())
-        self.assertEqual(self.node_b.puttable_links, {'b/b_sub/b_sub/b_sub'})
+        print(self.vizier.get_links())
+        print(self.vizier.get_deps())
+        print(self.vizier.get_link_deps())
 
     def tearDown(self):
         self.node_a.stop()
         self.node_b.stop()
+        self.vizier.stop()

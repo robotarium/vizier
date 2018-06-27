@@ -27,12 +27,13 @@ class Node:
         # usually access it to retrieve this data
         self.expanded_links, self.requested_links = utils.generate_links_from_descriptor(node_descriptor)
         # By convention, the node descriptor is always on this link
-        self.expanded_links['node_descriptor'] = {'type': 'DATA', 'body': node_descriptor}
+        self.expanded_links[self.end_point+'/node_descriptor'] = {'type': 'DATA', 'body': node_descriptor}
         self.host = broker_host
         self.port = broker_port
 
         # Figure out which topics are providing etc...
-        self.puttable_links = set(filter(lambda x: self.expanded_links[x]['type'] == 'DATA', self.expanded_links))
+        # Make sure to remove <node>/node_descriptor as a puttable topic, as this is dedicated
+        self.puttable_links = set(filter(lambda x: self.expanded_links[x]['type'] == 'DATA', self.expanded_links)) - {self.end_point+'/node_descriptor'}
         self.publishable_links = set(filter(lambda x: self.expanded_links[x]['type'] == 'STREAM', self.expanded_links))
         # The next two values are set later in the 'connect' method
         self.gettable_links = set()
@@ -53,18 +54,22 @@ class Node:
             self.logger = logging.getLogger(__name__)
             self.logger.setLevel(logging.DEBUG)
 
-    def _make_request(self, request_id, method, link, body, retries=30, timeout=1):
+    def _make_request(self, method, link, body, request_id=None, retries=30, timeout=1):
         """Makes a get request for data on a particular topic.
         Will try 'retries' amount for 'timeout' seconds.
-        request_id: string (uniquely generated key for this message)
         method: string (method for request)
         link: string (link on which to make request)
         body: JSON-formatted dict (dict containing optional body information for the request)
+        request_id: string (uniquely generated key for this message)
         retries: int (optional number of retries for the request)
         timeout: double (optimal timeout to wait for return message)
 
         -> MQTT message (containing the response to the request)
         """
+
+        # If we didn't get a request_id, create one
+        if not request_id:
+            request_id = utils.create_message_id()
 
         # Set up request/response link for this request
         tokens = link.split('/')
@@ -104,36 +109,11 @@ class Node:
         self.mqtt_client.unsubscribe(response_link)
         return decoded_message
 
-    ## TODO: For now, removed the connection to the server.  Currently treating the server more like a query object than anything.
-    ## Can always connect to the server in the future if wildcard functionality is needed
-    #def connect(self, timeout=5, retries=5):
-    #    """Connects to the vizier server, setting up possible links
-    #    timeout: double (timeout on GET requests)
-    #    retries: int (number of times to retry GET requests)
-    #    -> None"""
-
-    #    ids = [utils.create_message_id() for _ in self.requested_links]
-    #    tups = zip(ids, self.requested_links)
-    #    receive_results = dict(zip(self.requested_links,
-    #                               self.executor.map(lambda x: self._make_request(x[0], 'GET', x[1], {}, timeout=timeout, retries=retries), tups)))
-
-    #    # Ensure that we got all the results we expected
-    #    if(None in receive_results.items()):
-    #        self.logger.error('Could not get all receive requests')
-    #        return False
-
-    #    #self.logger.info(repr(receive_results))
-
-    #    self.logger.info('Succesfully connected to vizier network')
-
-    #    # Parse out data/stream topics
-    #    self.gettable_links = set(filter(lambda x: receive_results[x]['type'] == 'DATA', receive_results))
-    #    self.subscribable_links = set(filter(lambda x: receive_results[x]['type'] == 'STREAM', receive_results))
-
     def put(self, link, info):
         """Offers data on a particular link
         link: string (link on which to place data)
         info: dict (data to place on the link)
+
         -> None"""
 
         # Ensure that the link has been specified by the node descriptor
@@ -150,6 +130,7 @@ class Node:
         """Publishes data on a particular link.  Link should have been classified as STREAM in node descriptor.
         link: string (link on which data is published)
         data: bytes (encoded bytes to be published)
+
         -> None"""
 
         if(link in self.publishable_links):
@@ -162,6 +143,7 @@ class Node:
         """Start the MQTT client and connect to the vizier network
         retries: int (number of retries for each GET request)
         timeout: double (timeout for each GET request)
+
         -> None"""
 
         # Start the MQTT client to ensure we can attach this callback
@@ -211,15 +193,11 @@ class Node:
                 # Handle the get request by looking for information under the specified URI
                 if(requested_link in self.expanded_links):
                     # If we have any record of this URI, create a response message
-                    response = utils.create_response(_http_codes['success'],
-                                                     self.expanded_links[requested_link]['body'],
-                                                     self.expanded_links[requested_link]['type'])
+                    response = utils.create_response(_http_codes['success'], self.expanded_links[requested_link]['body'], self.expanded_links[requested_link]['type'])
                     response_channel = utils.create_response_link(self.end_point, message_id)
-                    self.logger.info('Sent message ffrom GET request')
                     self.mqtt_client.send_message(response_channel, json.dumps(response).encode(encoding='UTF-8'))
-                    self.logger.info('Returned from send message function')
 
-            # TODO: Fill in other methods
+                # TODO: Fill in other methods
 
         # Subscribe to requests channel with created request handler
         self.mqtt_client.subscribe_with_callback(self.request_channel, request_handler)
@@ -227,10 +205,7 @@ class Node:
         # Executor for handling multiple GET requests
         # This may (or may not) be necessary
         self.executor = futures.ThreadPoolExecutor(max_workers=100)
-        ids = [utils.create_message_id() for _ in self.requested_links]
-        tups = zip(ids, self.requested_links)
-        receive_results = dict(zip(self.requested_links,
-                                   self.executor.map(lambda x: self._make_request(x[0], 'GET', x[1], {}, timeout=timeout, retries=retries), tups)))
+        receive_results = dict(zip(self.requested_links, self.executor.map(lambda x: self._make_request('GET', x, {}, timeout=timeout, retries=retries), self.requested_links)))
 
         # Ensure that we got all the results we expected
         if(None in receive_results.items()):
@@ -246,4 +221,5 @@ class Node:
 
     def stop(self):
         """Stop the MQTT client"""
+
         self.mqtt_client.stop()

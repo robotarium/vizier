@@ -4,7 +4,8 @@
   {
     "/a_sub" :
     {
-      "links" : {},
+      "links": {},
+      "body": {},
       "type": "STREAM"
     }
   },

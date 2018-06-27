@@ -1,6 +1,4 @@
-import mqtt_interface.promise as promise
 import paho.mqtt.client as mqtt
-# import asyncio
 import collections
 import concurrent.futures
 import functools
