@@ -61,8 +61,16 @@ class Vizier(node.Node):
         expanded_descriptors = [utils.generate_links_from_descriptor(x['body']) for x in results]
 
         # Build dependency graph for list of links
-        self.link_graph = dict({list(x.keys())[0].split('/')[0]: {'requests': y, 'links': x} for x, y in expanded_descriptors})
-        self.links = list([y for x in self.link_graph.values() for y in x['links'].keys()])
+        self.link_graph = dict({list(x.keys())[0].split('/')[0]: {'requests': set(y), 'links': set(x)} for x, y in expanded_descriptors})
+        self.links = set([y for x in self.link_graph.values() for y in x['links']])
+
+    def verify_deps(self):
+        unsatisfied = [{'node': x, 'unsatisfied': y['requests'] - y['requests'].intersection(self.links)}
+                        for x, y in self.link_graph.items() if not y['requests'].issubset(self.links)] 
+        if unsatisfied:
+            raise ValueError('Dependencies {} unsatisfied'.format(unsatisfied))
+        else:
+            return True
 
     def get_links(self):
         return self.links

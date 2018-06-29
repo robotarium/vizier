@@ -48,7 +48,7 @@ class MQTTInterface:
         """Thread safe. Callback handling messages from the client.  Either puts the message into a callback or a channel"""
        
         # Unsubscribe could happen between these statements, so we need the lock
-        with self.lock: 
+        with self.lock:
             if(msg.topic in self.callbacks):
                 self.callbacks[msg.topic](msg)
 
@@ -88,10 +88,8 @@ class MQTTInterface:
         message: bytes (in some kind of encoded format like UTF-8)
         -> None"""
 
+        # TODO: Ensure that this function is actually threa-safe
         self.client.publish(channel, message)
-#        with self.lock:
-#            self.logger.info('Sent messsage')
-#            self.logger.info('Finished sending message')
 #
     def start(self):
         """Handles starting the underlying MQTT client
@@ -99,7 +97,7 @@ class MQTTInterface:
 
         # Local function to handle connection to the MQTT server
         def on_connect(client, userdata, flags, rc):
-            self.logger.info("Client successfully connected to server.")
+            self.logger.info('Client successfully connected to server.')
 
         self.client.on_connect = on_connect
 
@@ -107,7 +105,7 @@ class MQTTInterface:
         try:
             self.client.connect(self.host, self.port, self.keep_alive)
         except Exception as e:
-            self.logger.error("MQTT client couldn't connect to broker at host: " + repr(self.host) + " port: " + repr(self.port))
+            self.logger.error('MQTT client could not connect to broker at host: {0}, port: {1}'.format(self.host, self.port))
             raise e
 
         # Starts MQTT client in background thread

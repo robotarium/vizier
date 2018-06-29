@@ -34,13 +34,14 @@ class TestVizierNodes(unittest.TestCase):
         self.node_b = node.Node('localhost', 1883, node_descriptor_b)
         self.node_b.start()
 
-        self.vizier = vizier.Vizier('localhost', 1883, ['a', 'b'])
+        self.vizier = vizier.Vizier('localhost', 1883, ['b'])
         self.vizier.start()
    
     def test_publishable_links(self):
         print(self.vizier.get_links())
         print(self.vizier.get_deps())
         print(self.vizier.get_link_deps())
+        print(self.vizier.verify_deps())
 
     def tearDown(self):
         self.node_a.stop()
