@@ -1,0 +1,14 @@
+{
+  "end_point" : "talker",
+  "links" :
+  {
+    "/mouth" :
+    {
+      "requests" : [],
+      "links" : {},
+      "type": "STREAM"
+    }
+  },
+  "requests" : [],
+  "version" : "0.2"
+}

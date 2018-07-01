@@ -1,0 +1,14 @@
+{
+  "end_point" : "controller",
+  "links" :
+  {
+    "/input" :
+    {
+      "requests" : ["plant/state"],
+      "links" : {},
+      "type": "STREAM"
+    }
+  },
+  "requests" : [],
+  "version" : "0.2"
+}
