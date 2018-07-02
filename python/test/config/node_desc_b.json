@@ -1,0 +1,25 @@
+{
+  "end_point" : "b",
+  "links" :
+  {
+    "/b_sub":
+    {
+      "links": 
+      {
+        "/b_sub":
+        {
+          "links": 
+          {
+            "/b_sub":
+            {
+		          "links": {},
+              "type": "DATA", 
+              "body": {}
+            }
+          }
+        }
+      }
+    } 
+  },
+  "requests" : ["a/a_sub"]
+}

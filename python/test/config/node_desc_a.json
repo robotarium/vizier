@@ -4,11 +4,10 @@
   {
     "/a_sub" :
     {
-      "requests" : ["b/b_sub"],
-      "links" : {},
+      "links": {},
+      "body": {},
       "type": "STREAM"
     }
   },
-  "requests" : [],
-  "version" : "0.2"
+  "requests" : []
 }
