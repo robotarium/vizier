@@ -121,11 +121,11 @@ class Node:
         if(link in self.puttable_links):
             # This operation should be threadsafe (for future reference)
             # Ensure that the link is of type DATA
-            self.links[link] = info
+            self.expanded_links[link]['body'] = info
             self.logger.info('Put something on link %s' % link)
         else:
             # TODO: Handle error
-            pass
+            raise ValueError
 
     def publish(self, link, data):
         """Publishes data on a particular link.  Link should have been classified as STREAM in node descriptor.
@@ -139,6 +139,38 @@ class Node:
         else:
             self.logger.error('Requested link (%s) not classified as STREAM' % link)
             raise ValueError
+
+    def get(self, link, timeout=1, retries=5):
+        """Make a get request on a particular link
+        
+        """
+        response = self._make_request('GET', link, {}, timeout=timeout, retries=retries)
+        return response['body']
+
+    def subscribe(self, link):
+        """
+
+        """
+        if(link in self.subscribable_links):
+            q = self.mqtt_client.subscribe(link)
+            return q
+        else: 
+            raise ValueError('Link ({0}) not contained in subscribable_links ({1})'.format(link, self.subscribable_links))
+
+    def subscribe_with_callback(self, link, callback):
+        if(link in self.subscribable_links):
+            self.mqtt_client.subscribe_with_callback(link, callback)
+        else:
+            raise ValueError('Link ({0}) not contained in subscribable_links ({1})'.format(link, self.subscribable_links))
+
+    def unsubscribe(self, link):
+        """
+        
+        """
+        if(link in self.subscribable_links):
+            self.mqtt_client.unsubscribe(link)
+        else:
+            raise ValueError('Link ({0}) not contained in subscribable_links ({1})'.format(link, self.subscribable_links))
 
     def start(self, retries=5, timeout=1):
         """Start the MQTT client and connect to the vizier network
