@@ -9,8 +9,6 @@ import threading
 import logging
 import logging.handlers as handlers
 
-#Some named tuples to make things a bit more readable
-FutureTask = collections.namedtuple('FutureTask', ['f', 'promise'])
 
 # Filter for logging
 class MQTTInterface:
@@ -97,7 +95,7 @@ class MQTTInterface:
 
         # Local function to handle connection to the MQTT server
         def on_connect(client, userdata, flags, rc):
-            self.logger.info('Client successfully connected to server.')
+            self.logger.info('MQTT client successfully connected to broker on host: {0}, port: {1}'.format(self.host, self.port))
 
         self.client.on_connect = on_connect
 

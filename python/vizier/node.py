@@ -6,6 +6,7 @@ from vizier import utils
 # For logging
 import logging
 
+#TODO: set logging in a better way
 logging.basicConfig(format='%(levelname)s %(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
 
 # HTTP codes for convenience later
@@ -162,6 +163,7 @@ class Node:
                 encountered_error = True
 
             # Check to make sure that it's a valid request
+            # TODO: Handle error in a more specific way
             if('id' not in decoded_message):
                 # This is an error.  Return from the callback
                 self.logger.error("Request received without valid id")
@@ -185,6 +187,8 @@ class Node:
 
             if(encountered_error):
                 # TODO: Create and send error message
+                #response = utils.create_response(_http_codes['not_found'], {"error": "Encountered error in request"}, "ERROR")
+                #response_channel = utils.create_response_link(self.end_point, message_id)
                 return
 
             # We have a valid request at this point
@@ -210,15 +214,14 @@ class Node:
 
         # Ensure that we got all the results we expected
         if(None in receive_results.items()):
-            self.logger.error('Could not get all receive requests')
             raise ValueError('Could not get all receive requests')
 
         #self.logger.info(repr(receive_results))
         self.logger.info('Succesfully connected to vizier network')
 
         # Parse out data/stream topics
-        self.gettable_links = set(filter(lambda x: receive_results[x]['type'] == 'DATA', receive_results))
-        self.subscribable_links = set(filter(lambda x: receive_results[x]['type'] == 'STREAM', receive_results))
+        self.gettable_links = {x for x, y in receive_results.items() if y['type'] == 'DATA'}
+        self.subscribable_links = {x for x, y in receive_results.items() if y['type'] == 'STREAM'}
 
     def stop(self):
         """Stop the MQTT client"""
