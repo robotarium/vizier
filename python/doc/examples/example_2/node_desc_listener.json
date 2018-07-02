@@ -1,0 +1,12 @@
+{
+  "end_point" : "listener",
+  "links" :
+  {
+    "/ear" :
+    {
+      "links" : {},
+      "type" : "STREAM"
+    }
+  },
+  "requests" : ["talker/mouth"]
+}
