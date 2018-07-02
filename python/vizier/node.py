@@ -141,15 +141,26 @@ class Node:
             raise ValueError
 
     def get(self, link, timeout=1, retries=5):
-        """Make a get request on a particular link
-        
+        """Make a get request on a particular link, provided that the link is in the gettable links for the node.
+        link: string (link on which GET request is made)
+        timeout: double (timeout for GET request)
+        retries: int (number of times to retry GET request)
+
+        -> None
         """
-        response = self._make_request('GET', link, {}, timeout=timeout, retries=retries)
-        return response['body']
+        
+        if(link in self.gettable_links):
+            response = self._make_request('GET', link, {}, timeout=timeout, retries=retries)
+            return response['body']
+        else:
+            raise ValueError('Link ({0}) not contained in gettable links ({1})'.format(link, self.gettable_links))
 
     def subscribe(self, link):
         """
+        Subscribes to the provided link with the underlying MQTT client, provided that the link is in the subscribable links for the node.
+        link: string (link to which the node should subscribe)
 
+        -> None
         """
         if(link in self.subscribable_links):
             q = self.mqtt_client.subscribe(link)
