@@ -245,7 +245,7 @@ class Node:
         receive_results = dict(zip(self.requested_links, self.executor.map(lambda x: self._make_request('GET', x, {}, timeout=timeout, retries=retries), self.requested_links)))
 
         # Ensure that we got all the results we expected
-        if(None in receive_results.items()):
+        if(None in receive_results.values()):
             raise ValueError('Could not get all receive requests')
 
         #self.logger.info(repr(receive_results))
