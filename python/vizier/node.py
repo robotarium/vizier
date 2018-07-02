@@ -158,15 +158,24 @@ class Node:
             raise ValueError('Link ({0}) not contained in subscribable_links ({1})'.format(link, self.subscribable_links))
 
     def subscribe_with_callback(self, link, callback):
+        """Subscribes to link with the callback using the underlying MQTT client. 
+        link: string (link to which the client subscribes)
+        callback: function (callback for the link)
+
+        -> None
+        """
         if(link in self.subscribable_links):
             self.mqtt_client.subscribe_with_callback(link, callback)
         else:
             raise ValueError('Link ({0}) not contained in subscribable_links ({1})'.format(link, self.subscribable_links))
 
     def unsubscribe(self, link):
-        """
+        """If the specified link is in the subscribable links, the node unsubscribes from the link. 
+        link: string (link to be unsubscribed)
         
+        -> None
         """
+
         if(link in self.subscribable_links):
             self.mqtt_client.unsubscribe(link)
         else:

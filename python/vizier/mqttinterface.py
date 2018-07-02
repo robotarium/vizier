@@ -86,7 +86,7 @@ class MQTTInterface:
         message: bytes (in some kind of encoded format like UTF-8)
         -> None"""
 
-        # TODO: Ensure that this function is actually threa-safe
+        # TODO: Ensure that this function is actually thread-safe
         self.client.publish(channel, message)
 #
     def start(self):
