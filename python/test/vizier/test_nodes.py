@@ -1,4 +1,3 @@
-import time
 import json
 import vizier.node as node
 import unittest

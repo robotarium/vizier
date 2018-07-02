@@ -1,7 +1,7 @@
-import mqtt_interface.mqttinterface as mqtt
+import vizier.mqttinterface as mqtt
 import concurrent.futures as futures
 import json
-from utils import utils
+from vizier import utils
 
 # For logging
 import logging
@@ -103,7 +103,7 @@ class Node:
                 pass
 
         if(decoded_message is None):
-            self.logger.error('Get request on topic (%s) failed', link)
+            self.logger.error('Get request on topic ({}) failed'.format(link))
 
         # Make sure that we unsubscribe from the response channel, and, finally, return the decoded message
         self.mqtt_client.unsubscribe(response_link)
@@ -149,7 +149,8 @@ class Node:
         # Start the MQTT client to ensure we can attach this callback
         self.mqtt_client.start()
 
-        # Make request handler for vizier network
+        # Make request handler for vizier network.  Later this function is attached as a callback to 
+        # <node_name>/requests to handle incoming requests.  All requests are passed through this function
         def request_handler(network_message):
             encountered_error = False
             try:

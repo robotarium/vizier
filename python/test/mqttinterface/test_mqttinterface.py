@@ -1,4 +1,4 @@
-from mqtt_interface import mqttinterface
+from vizier import mqttinterface
 import time
 import unittest
 
