@@ -18,7 +18,7 @@ class TestMQTTInterface(unittest.TestCase):
         time.sleep(0.5)
         self.client_one.send_message('test/topic', test_message.encode(encoding='UTF-8'))
         message = q.get()
-        self.assertEqual(test_message, message.payload.decode(encoding='UTF-8'))
+        self.assertEqual(test_message, message.decode(encoding='UTF-8'))
 
     def test_subscribe_with_callback(self):
 
