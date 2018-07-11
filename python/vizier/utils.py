@@ -142,19 +142,21 @@ def generate_links_from_descriptor(descriptor):
     """Recursively parses a descriptor file, expanding links as it goes.  This function will
     also check to ensure that all specified paths are valid, with respect to the local node.
 
-    Args:
-        descriptor (dict):  A JSON-formatted descriptor for the node.  For example
+    The descriptor is a JSON-formatted dict.  For example
+    {
+        'end_point': 'test_node',
+        'links':
         {
-            'end_point': 'test_node',
-            'links':
+            'sub_link':
             {
-                'sub_link':
-                {
-                    'type': 'DATA
-                }
-            },
-            'requests': []
-        }
+                'type': 'DATA
+            }
+        },
+        'requests': []
+    }
+
+    Args:
+        descriptor (dict):  A JSON-formatted descriptor for the node.
 
     Returns:
         A dict containing the non-recursively defined links, and the requests of the node.  For example
@@ -212,4 +214,16 @@ def generate_links_from_descriptor(descriptor):
     else:
         requests = []
 
-    return expanded_links, requests
+    # Parse out required vs. optional requests.  Requests formatted as a string are assumed to be optional.  Those formatted as a dict are the most general
+    # and the type defaults to the Boolean value of the 'required' field
+    requests_d = {}
+    for x in requests:
+        if isinstance(x, str):
+            requests_d[x] = 'optional'
+        else:
+            if('link' in x and 'required' in x):
+                requests_d[x['link']] = x['required']
+            else:
+                raise ValueError('Request type must be in proper format')
+
+    return expanded_links, requests_d

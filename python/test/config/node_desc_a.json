@@ -1,13 +1,16 @@
 {
-  "end_point" : "a",
-  "links" :
-  {
-    "/a_sub" :
-    {
-      "links": {},
-      "body": {},
-      "type": "STREAM"
-    }
-  },
-  "requests" : []
+	"end_point" : "a",
+  	"links" :
+  	{
+    	"/a_sub" :
+    	{
+      		"links": {},
+      		"type": "STREAM"
+    	}, 
+    	"a/a_sub2": 
+    	{
+		"type": "DATA"
+    	}
+  	},
+  	"requests" : []
 }

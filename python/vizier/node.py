@@ -7,7 +7,6 @@ import vizier.utils as utils
 import logging
 
 # TODO: set logging in a better way
-logging.basicConfig(format='%(levelname)s %(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
 
 # HTTP codes for convenience later
 _http_codes = {'success': 200, 'not_found': 404}
@@ -19,11 +18,11 @@ class Node:
     More stuff
 
     Attributes:
-        mqtt_client:
-        node_descriptor:
+        mqtt_client: Underlying Paho MQTT client
+        node_descriptor (dict): JSON-formmated dict used containing information about the node
         ...
     """
-    def __init__(self, broker_host, broker_port, node_descriptor, logging_config=None):
+    def __init__(self, broker_host, broker_port, node_descriptor, logger=None):
 
         # Setting up MQTT client as well as the dicts to hold DATA information
         self.mqtt_client = mqtt.MQTTInterface(port=broker_port, host=broker_host)
@@ -57,12 +56,13 @@ class Node:
 
         # Some logging definitions.
         # TODO: This probably needs to change at some point.
-        if(logging_config):
-            logging.configDict(logging_config)
-            self.logger = logging.getLogger(__name__)
-        else:
-            self.logger = logging.getLogger(__name__)
-            self.logger.setLevel(logging.DEBUG)
+        if not logger:
+            logging.basicConfig(format='%(levelname)s %(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
+
+            logger = logging.getLogger(__name__)
+            logger.setLevel(logging.DEBUG)
+
+        self.logger = logger
 
     def _make_request(self, method, link, body, request_id=None, retries=30, timeout=1):
         """Makes a get request for data on a particular topic. Will try 'retries' amount for 'timeout' seconds.
@@ -227,7 +227,7 @@ class Node:
         else:
             raise ValueError('Link ({0}) not contained in subscribable_links ({1})'.format(link, self.subscribable_links))
 
-    def start(self, retries=5, timeout=1):
+    def start(self, retries=10, timeout=0.25):
         """Start the MQTT client and connect to the vizier network
 
         Args:
@@ -303,18 +303,29 @@ class Node:
         # This may (or may not) be necessary
         self.executor = futures.ThreadPoolExecutor(max_workers=100)
         receive_results = dict(zip(self.requested_links, self.executor.map(lambda x: self._make_request('GET', x, {}, timeout=timeout, retries=retries),
-                                                                           self.requested_links)))
+                                                                           self.requested_links.keys())))
 
-        # Ensure that we got all the results we expected
-        if(None in receive_results.values()):
-            raise ValueError('Could not get all receive requests')
+        # Ensure that all required links were obtained
+        error = False
+        failed_to_get = []
+        for x, y in receive_results.items():
+            if y is None:
+                if(self.requested_links[x] == 'required'):
+                    error = True
+                    failed_to_get.append(x)
+                else:
+                    self.logger.info('Could not get optional request {}'.format(x))
+
+        # If one of the required links couldn't be obtained, throw an error
+        if error:
+            raise ValueError('Could not get required links {}'.format(failed_to_get))
 
         # self.logger.info(repr(receive_results))
         self.logger.info('Succesfully connected to vizier network')
 
         # Parse out data/stream topics
-        self.gettable_links = {x for x, y in receive_results.items() if y['type'] == 'DATA'}
-        self.subscribable_links = {x for x, y in receive_results.items() if y['type'] == 'STREAM'}
+        self.gettable_links = {x for x, y in receive_results.items() if y is not None and y['type'] == 'DATA'}
+        self.subscribable_links = {x for x, y in receive_results.items() if y is not None and y['type'] == 'STREAM'}
 
     def stop(self):
         """Stop the MQTT client"""

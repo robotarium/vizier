@@ -1,25 +1,13 @@
 {
-  "end_point" : "b",
-  "links" :
-  {
-    "/b_sub":
-    {
-      "links": 
-      {
-        "/b_sub":
-        {
-          "links": 
-          {
-            "/b_sub":
-            {
-		          "links": {},
-              "type": "DATA", 
-              "body": {}
-            }
-          }
-        }
-      }
-    } 
-  },
-  "requests" : ["a/a_sub"]
+	"end_point" : "b",
+	"links" :
+	{
+		"/b_sub":
+ 		{
+			"type": "DATA"
+    		} 
+  	},
+  	"requests" : [{"link": "a/a_sub", "required": true},
+	  	    "a/a_sub2",
+	  	    {"link": "optional_topic1", "required": false}]
 }

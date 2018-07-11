@@ -6,6 +6,28 @@ import threading
 import logging
 
 
+# CountDownLatch for some MQTT client checking
+class _CountDownLatch():
+
+    def __init__(self, count=1):
+        self._cv = threading.Condition()
+        self._count = count
+
+    def _counted_down(self):
+        return self._count <= 0
+
+    def count_down(self):
+        with self._cv:
+            self._count -= 1
+            self._count = max(self._count, 0)
+            if(self._count <= 0):
+                self._cv.notify_all()
+
+    def wait(self):
+        with self._cv:
+            self._cv.wait_for(self._counted_down)
+
+
 # Filter for logging
 class MQTTInterface:
     """This is a wrapper around the Paho MQTT interface with enhanced functionality
@@ -84,6 +106,7 @@ class MQTTInterface:
         q = queue.Queue()
 
         def f(msg):
+            nonlocal q
             q.put(msg)
 
         self.subscribe_with_callback(channel, f)
@@ -115,9 +138,13 @@ class MQTTInterface:
     def start(self):
         """Handles starting the underlying MQTT client"""
 
+        cdl = _CountDownLatch(1)
+
         # Local function to handle connection to the MQTT server
         def on_connect(client, userdata, flags, rc):
+            nonlocal cdl
             self.logger.info('MQTT client successfully connected to broker on host: {0}, port: {1}'.format(self.host, self.port))
+            cdl.count_down()
 
         self.client.on_connect = on_connect
 
@@ -130,6 +157,9 @@ class MQTTInterface:
 
         # Starts MQTT client in background thread
         self.client.loop_start()
+
+        # Have to start client before we wait on CDL.  Client won't process any messages until we start it
+        cdl.wait()
 
     def stop(self):
         """Handles stopping the MQTT client"""
