@@ -53,7 +53,7 @@ class Vizier(node.Node):
         self.executor = futures.ThreadPoolExecutor(max_workers=100)
 
     def start(self, retries=30, timeout=1):
-        """Starts the vizier node.
+        """Starts the vizier node
 
         Starts the underlying MQTT client and makes GET requests for specified nodes.  These requests retrieve all the relevant data for the nodes so that
         inspection can occur.  This data is only retrieved once and is static over the lifetime of the vizier object.
@@ -87,6 +87,7 @@ class Vizier(node.Node):
 
         """
 
+        # TODO: Modify this to account for new request structure
         unsatisfied = [{'node': x, 'unsatisfied': y['requests'] - y['requests'].intersection(self.links)}
                        for x, y in self.link_graph.items() if not y['requests'].issubset(self.links)]
         if unsatisfied:

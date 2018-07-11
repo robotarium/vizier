@@ -23,9 +23,9 @@ class _CountDownLatch():
             if(self._count <= 0):
                 self._cv.notify_all()
 
-    def wait(self):
+    def wait(self, timeout=None):
         with self._cv:
-            self._cv.wait_for(self._counted_down)
+            self._cv.wait_for(self._counted_down, timeout=timeout)
 
 
 # Filter for logging
@@ -135,7 +135,7 @@ class MQTTInterface:
         # TODO: Ensure that this function is actually thread-safe
         self.client.publish(channel, message)
 
-    def start(self):
+    def start(self, timeout=None):
         """Handles starting the underlying MQTT client"""
 
         cdl = _CountDownLatch(1)
@@ -155,11 +155,11 @@ class MQTTInterface:
             self.logger.error('MQTT client could not connect to broker at host: {0}, port: {1}'.format(self.host, self.port))
             raise e
 
-        # Starts MQTT client in background thread
+        # Starts MQTT client in background thread.  This has to be done before the client will process any messages
         self.client.loop_start()
 
         # Have to start client before we wait on CDL.  Client won't process any messages until we start it
-        cdl.wait()
+        cdl.wait(timeout=timeout)
 
     def stop(self):
         """Handles stopping the MQTT client"""
