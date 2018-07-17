@@ -219,7 +219,7 @@ def generate_links_from_descriptor(descriptor):
     requests_d = {}
     for x in requests:
         if isinstance(x, str):
-            requests_d[x] = 'optional'
+            requests_d[x] = True
         else:
             if('link' in x and 'required' in x):
                 requests_d[x['link']] = x['required']

@@ -22,6 +22,7 @@ class Node:
         node_descriptor (dict): JSON-formmated dict used containing information about the node
         ...
     """
+
     def __init__(self, broker_host, broker_port, node_descriptor, logger=None):
 
         # Setting up MQTT client as well as the dicts to hold DATA information

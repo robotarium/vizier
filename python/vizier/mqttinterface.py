@@ -8,15 +8,25 @@ import logging
 
 # CountDownLatch for some MQTT client checking
 class _CountDownLatch():
+    """This class handles some synchronization behind starting the paho MQTT client
+
+    Attributes:
+        _cv (threading.Condition): Condition variable for waiting on the countdown
+        _count (int): Current count of the latch.  Calls to wait return when count reaches 0
+    """
 
     def __init__(self, count=1):
         self._cv = threading.Condition()
         self._count = count
 
     def _counted_down(self):
+        """Helper function to determine if the countdown has occured"""
+
         return self._count <= 0
 
     def count_down(self):
+        """Thread safe.  When the count reaches 0, all waits return"""
+
         with self._cv:
             self._count -= 1
             self._count = max(self._count, 0)
@@ -24,6 +34,12 @@ class _CountDownLatch():
                 self._cv.notify_all()
 
     def wait(self, timeout=None):
+        """Thread safe.  Waits for the count to reach 0
+
+        Args:
+            timeout (double): timeout to wait on latch
+        """
+
         with self._cv:
             self._cv.wait_for(self._counted_down, timeout=timeout)
 
