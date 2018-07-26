@@ -44,7 +44,6 @@ class _CountDownLatch():
             self._cv.wait_for(self._counted_down, timeout=timeout)
 
 
-# Filter for logging
 class MQTTInterface:
     """This is a wrapper around the Paho MQTT interface with enhanced functionality
 

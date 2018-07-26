@@ -9,6 +9,7 @@ import argparse
 import random
 import vizier.node as vizier_node
 
+
 def main():
 
     # Parse Command Line Arguments
@@ -41,26 +42,27 @@ def main():
     msg_queue = node.subscribe(subscribable_link)
 
     # Set the initial condition
-    state = 10*random.random()-5
+    state = 10*random.random() - 5
     dt = 0.0
-    node.publish(publishable_link,str(state))
+    node.publish(publishable_link, str(state))
     print('\n')
-    while True:
+    while abs(state - 5) >= 0.001:
         tick = time.time()
         try:
-            message = msg_queue.get(timeout = 0.1).payload.decode(encoding='UTF-8')
+            message = msg_queue.get(timeout=0.1).decode(encoding='UTF-8')
             input = float(message)
         except KeyboardInterrupt:
             break
-        except:
+        except Exception:
             input = 0.0
         tock = time.time()
         dt = tock - tick
         state = state + dt * input
-        print('State = {}'.format(state),end='\r')
-        node.publish(publishable_link,str(state))
+        print('\t\t\t\t\t\tState = {}'.format(state), end='\r')
+        node.publish(publishable_link, str(state))
     print('\n')
     node.stop()
+
 
 if(__name__ == "__main__"):
     main()

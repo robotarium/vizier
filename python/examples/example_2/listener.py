@@ -7,6 +7,7 @@ import json
 import argparse
 import vizier.node as vizier_node
 
+
 def main():
 
     # Parse Command Line Arguments
@@ -41,14 +42,15 @@ def main():
     val = 0
     while val <= 9:
         try:
-            message = msg_queue.get(timeout = 10).payload.decode(encoding='UTF-8')
-            val = float(message.replace(' ','').split(':')[1])
+            message = msg_queue.get(timeout=10).decode(encoding='UTF-8')
+            val = float(message.replace(' ', '').split(':')[1])
             print(message)
         except KeyboardInterrupt:
             break
-        except:
+        except Exception:
             pass
     node.stop()
+
 
 if(__name__ == "__main__"):
     main()

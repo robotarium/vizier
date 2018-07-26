@@ -5,8 +5,8 @@
 
 import json
 import argparse
-import numpy as np
 import vizier.node as vizier_node
+
 
 def main():
 
@@ -40,20 +40,21 @@ def main():
 
     # Control stuffs
     ref = 5.0
-    state = np.inf
+    state = 1.0e6
     print('\n')
-    while abs(ref- state) >=0.001:
+    while abs(ref - state) >= 0.001:
         try:
-            message = msg_queue.get(timeout = 1).payload.decode(encoding='UTF-8')
+            message = msg_queue.get(timeout=1).decode(encoding='UTF-8')
             state = float(message)
         except KeyboardInterrupt:
             break
-        except:
+        except Exception:
             continue
-        print('Control input = {}'.format(ref-state),end='\r')
-        node.publish(publishable_link,str(ref-state))
+        print('Control input = {}'.format(ref-state), end='\r')
+        node.publish(publishable_link, str(ref-state))
     print('\n')
     node.stop()
+
 
 if(__name__ == "__main__"):
     main()

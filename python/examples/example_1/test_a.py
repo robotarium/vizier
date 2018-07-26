@@ -7,6 +7,7 @@ import json
 import argparse
 import vizier.node as vizier_node
 
+
 def main():
 
     # Parse Command Line Arguments
@@ -39,24 +40,26 @@ def main():
     publishable_link = list(node.publishable_links)[0]
 
     # This will be printed from
-    paragraph="The quick brown fox jumps over the lazy dog.".split(' ')
+    paragraph = "The quick brown fox jumps over the lazy dog.".split(' ')
 
     # Keep Track of the Initial Conditions so that Output is Ordered
-    val=0
-    node.publish(publishable_link,str(val))
+    val = 0
+    node.publish(publishable_link, str(val))
     # Loop until the string is printed, then terminate
     while True:
         try:
-            val = int(msg_queue.get(timeout=10).payload.decode(encoding='UTF-8'))
+            val = int(msg_queue.get(timeout=10).decode(encoding='UTF-8'))
         except Exception as e:
-            node.publish(publishable_link,str(val))
+            print('Retrying after error {}'.format(repr(e)))
+            node.publish(publishable_link, str(val))
             continue
-        if (val>=len(paragraph)):
-            node.publish(publishable_link,str(val+1))
+        if (val >= len(paragraph)):
+            node.publish(publishable_link, str(val+1))
             break
         print(paragraph[val])
-        node.publish(publishable_link,str(val+1))
+        node.publish(publishable_link, str(val+1))
     node.stop()
+
 
 if(__name__ == "__main__"):
     main()

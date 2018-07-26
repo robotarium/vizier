@@ -6,8 +6,6 @@ import vizier.utils as utils
 # For logging
 import logging
 
-# TODO: set logging in a better way
-
 # HTTP codes for convenience later
 _http_codes = {'success': 200, 'not_found': 404}
 
