@@ -10,6 +10,9 @@ import logging
 _http_codes = {'success': 200, 'not_found': 404}
 
 
+# TODO: Data should be in byte format
+# TODO: Let remote nodes do a put on links?
+
 class Node:
     """ Represents a node on the vizier network...
 
@@ -63,7 +66,7 @@ class Node:
 
         self.logger = logger
 
-    def _make_request(self, method, link, body, request_id=None, retries=30, timeout=1):
+    def _make_request(self, method, link, body, request_id=None, retries=15, timeout=0.25):
         """Makes a get request for data on a particular topic. Will try 'retries' amount for 'timeout' seconds.
 
         Args:
@@ -118,6 +121,7 @@ class Node:
 
         # Make sure that we unsubscribe from the response channel, and, finally, return the decoded message
         self.mqtt_client.unsubscribe(response_link)
+
         return decoded_message
 
     def put(self, link, info):

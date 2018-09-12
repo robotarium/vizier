@@ -8,40 +8,39 @@ import concurrent.futures as futures
 # Actually be a more useful feature, anyway
 
 
+# TODO: Split up some of these functions into network query vs graph operations
 class Vizier(node.Node):
     """Handles inspection and dependency verification for the nodes passed into the network
 
     Attributes:
         host (str): MQTT host to which vizier node connects
         port (int):  MQTT port to which vizier node connects
-
     """
 
-    def __init__(self, host, port, nodes, logger=None):
+    def __init__(self, host, port, logger=None):
         """Initializes the vizier node.  Is able to inspect all nodes that are passed in.
 
         Args:
             host (str): MQTT host to which vizier node connects
             port (int):  MQTT port to which vizier node connects
-            nodes (list):  List of nodes which the vizier node inspects
         """
-
-        self.nodes = nodes
 
         # Auto-generate this descriptor based on the nodes
         vizier_descriptor = {
             "end_point": "vizier",
             "links": {},
-            "requests": self.nodes
+            "requests": []
         }
 
         super().__init__(host, port, vizier_descriptor, logger=logger)
 
         # To contain future node descriptors
-        self.node_descriptors = []
+        self.nodes_to_descriptors = {}
+        self.link_graph = {}
+        self.links = []
         self.executor = futures.ThreadPoolExecutor(max_workers=100)
 
-    def start(self, retries=30, timeout=1):
+    def start(self, nodes, retries=15, timeout=0.25):
         """Starts the vizier node
 
         Starts the underlying MQTT client and makes GET requests for specified nodes.  These requests retrieve all the relevant data for the nodes so that
@@ -54,46 +53,22 @@ class Vizier(node.Node):
 
         self.mqtt_client.start()
 
-        # Retrieves and expands all the node descriptors for the requested nodes
-        request_links = [x + '/node_descriptor' for x in self.nodes]
-        results = self.executor.map(lambda x: self._make_request('GET', x, {}, retries=retries, timeout=timeout), request_links)
-        expanded_descriptors = list([utils.generate_links_from_descriptor(x['body']) for x in results])
-        self.network_descriptor = dict({y: z for x, _ in expanded_descriptors for y, z in x.items()})
+        request_links = [x + '/node_descriptor' for x in nodes]
+        results = list(self.executor.map(lambda x: self._make_request('GET', x, {}, retries=retries, timeout=timeout), request_links))
 
-        # Build dependency graph for list of links
-        self.link_graph = dict({list(x.keys())[0].split('/')[0]: {'requests': y, 'links': set(x)} for x, y in expanded_descriptors})
+        # Check that we got all the required node descriptors
+        for i, r in enumerate(results):
+            if r is None:
+                raise ValueError('Could not retrieve descriptor for node ({})'.format(nodes[i]))
+
+        nodes_to_descriptors = dict({x: y['body'] for x, y in zip(nodes, results)})
+        self.nodes_to_descriptors = nodes_to_descriptors
+
+        expanded_descriptors = {x: utils.generate_links_from_descriptor(y) for x, y in self.node_descriptors.items()}
+        self.link_graph = dict({x: {'links': set(y[0]), 'requests': y[1]} for x, y in expanded_descriptors.items()})
         self.links = set([y for x in self.link_graph.values() for y in x['links']])
 
-    def verify_deps(self):
-        """Verifies the dependencies of the specified nodes.
-
-        Ensures that for each request that has been made, that link is being provided by another provided node.
-
-        Returns:
-            True if all the dependencies are met
-
-        Raises:
-            ValueError: If any dependency is unsatified
-
-        """
-
-        # TODO: Modify this to account for new request structure
-        # Filter out optional dependencies
-        only_required = {x: {i for i, j in y['requests'].items() if j} for x, y in self.link_graph.items()}
-        unsatisfied = [{'node': x, 'unsatisfied': y - y.intersection(self.links)}
-                       for x, y in only_required.items() if not y.issubset(self.links)]
-
-        # Now only look at the optional dependencies and see if any are missing
-        only_optional = {x: {i for i, j in y['requests'].items() if not j} for x, y in self.link_graph.items()}
-        optionally_unsatisfied = [{'node': x, 'unsatisfied': y - y.intersection(self.links)} for x, y in only_optional.items() if not y.issubset(self.links)]
-
-        if optionally_unsatisfied:
-            self.logger.info('Optional dependencies {} unsatisfied'.format(optionally_unsatisfied))
-
-        if unsatisfied:
-            raise ValueError('Dependencies {} unsatisfied'.format(unsatisfied))
-        else:
-            return True
+        return self
 
     def visualize(self, to_display=False):
         graph = graphviz.Digraph(comment='System Graph')
@@ -125,6 +100,36 @@ class Vizier(node.Node):
         print(graph.source)
 
         return graph
+
+    def verify_deps(self):
+        """Verifies the dependencies of the specified nodes.
+
+        Ensures that for each request that has been made, that link is being provided by another provided node.
+
+        Returns:
+            True if all the inter-node dependencies are met
+
+        Raises:
+            ValueError: If any dependency is unsatified
+        """
+
+        # TODO: Modify this to account for new request structure
+        # Filter out optional dependencies
+        only_required = {x: {i for i, j in y['requests'].items() if j} for x, y in self.link_graph.items()}
+        unsatisfied = [{'node': x, 'unsatisfied': y - y.intersection(self.links)}
+                       for x, y in only_required.items() if not y.issubset(self.links)]
+
+        # Now only look at the optional dependencies and see if any are missing
+        only_optional = {x: {i for i, j in y['requests'].items() if not j} for x, y in self.link_graph.items()}
+        optionally_unsatisfied = [{'node': x, 'unsatisfied': y - y.intersection(self.links)} for x, y in only_optional.items() if not y.issubset(self.links)]
+
+        if optionally_unsatisfied:
+            self.logger.info('Optional dependencies {} unsatisfied'.format(optionally_unsatisfied))
+
+        if unsatisfied:
+            raise ValueError('Dependencies {} unsatisfied'.format(unsatisfied))
+        else:
+            return True
 
     def get_links(self):
         return self.links
@@ -163,8 +168,16 @@ class Vizier(node.Node):
         else:
             raise ValueError('Link was not present!')
 
-    def get(self, link):
+    def get(self, link, retries=10, timeout=0.25):
         # TODO: finish
+
+        if(link in self.links):
+            if(self.network_descriptor[link]['type'] == 'DATA'):
+                self._make_request('GET', link, {}, retries=retries, timeout=timeout)
+            else:
+                raise ValueError('Link is not type DATA ({})'.format(self.network_descriptor[link]))
+        else:
+            raise ValueError('Link was not present. Try runnning discover on some nodes first')
         pass
 
     def stop(self):

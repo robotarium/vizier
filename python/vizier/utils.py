@@ -11,11 +11,16 @@ GetResponseTypeError = ValueError
 
 
 def create_message_id():
+    """Creates a unique message id for a request.
+
+    Returns:
+        A secure, random 64-byte message ID
+    """
     return binascii.hexlify(os.urandom(20)).decode()
 
 
 def create_response(status, body, topic_type):
-    """body: JSON dict (JSON-formatted dict to be transmitted with message)
+    """Creates a response message suitable for the vizier network.
 
     Args:
         status (int): Status integer for response
