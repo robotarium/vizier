@@ -63,7 +63,7 @@ class MQTTInterface:
 
             # self.client_queue = queue.Queue()
             self.client = mqtt.Client()
-            self.client.on_message = self.on_message
+            self.client.on_message = self._on_message
 
             # I shouldn't need a lock for this...
             self.channels = {}
@@ -78,7 +78,7 @@ class MQTTInterface:
                 self.logger.setLevel(logging.DEBUG)
 
     # The callback for when a PUBLISH message is received from the server.
-    def on_message(self, client, userdata, msg):
+    def _on_message(self, client, userdata, msg):
         """Thread safe. Callback handling messages from the client.  Either puts the message into a callback or a channel
 
         Args:

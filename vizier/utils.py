@@ -15,7 +15,9 @@ def create_message_id():
 
     Returns:
         A secure, random 64-byte message ID
+
     """
+
     return binascii.hexlify(os.urandom(20)).decode()
 
 
@@ -27,7 +29,9 @@ def create_response(status, body, topic_type):
 
     Returns:
         A JSON-formatted dict representing the response message
+
     """
+
     return {'status': status, 'body': body, 'type': topic_type}
 
 
@@ -40,6 +44,7 @@ def create_response_link(node, message_id):
 
     Returns:
         String of the form <node_name>/responses/message_id on which the response should be published
+
     """
 
     return '/'.join([node, 'responses', message_id])
@@ -53,6 +58,7 @@ def create_request_link(node):
 
     Returns:
         String representing the request link.  It is of the form <node_name>/requests
+
     """
 
     return '/'.join([node, 'requests'])
@@ -69,6 +75,7 @@ def create_request(request_id, method, link, body):
 
     Returns:
         JSON-formatted dict respresenting the request message.  This message can be published on the requests channel
+
     """
 
     return {'id': request_id, 'method': method, 'link': link, 'body': body}
@@ -84,6 +91,7 @@ def is_subpath_of(superpath, subpath, delimiter='/'):
 
     Returns:
         A bool indicating whether the relation holds
+
     """
 
     # Special case
@@ -112,6 +120,7 @@ def combine_paths(base, path):
 
     Returns:
         A string in absolute format
+
     """
 
     if(path[0] == '/'):
@@ -128,7 +137,11 @@ def extract_keys(descriptor):
 
     Returns:
         A dict containing a mapping of keys to be extracted.  For example
-        {'type': 'DATA', 'body': {}}
+
+        .. code-block:: python
+
+            {'type': 'DATA', 'body': {}}
+
     """
 
     extracted = {}
@@ -147,31 +160,31 @@ def generate_links_from_descriptor(descriptor):
     """Recursively parses a descriptor file, expanding links as it goes.  This function will
     also check to ensure that all specified paths are valid, with respect to the local node.
 
-    The descriptor is a JSON-formatted dict.  For example
-    {
-        'end_point': 'test_node',
-        'links':
+    The descriptor is a JSON-formatted dict.  For example,
+
+    .. code-block:: python
+
         {
-            'sub_link':
+            'end_point': 'test_node',
+            'links':
             {
-                'type': 'DATA
-            }
-        },
-        'requests': []
-    }
+                'sub_link':
+                {
+                    'type': 'DATA
+                }
+            },
+            'requests': []
+        }
 
     Args:
         descriptor (dict):  A JSON-formatted descriptor for the node.
 
     Returns:
         A dict containing the non-recursively defined links, and the requests of the node.  For example
-        {
-        'test_node/sub_link': {'type': 'DATA', 'body': {}}
-        },
-        []
 
     Raises:
         ValueError: If the recursive definition of the link paths is invalid.
+
     """
 
     def parse_links(path, link, local_descriptor):

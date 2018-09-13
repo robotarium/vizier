@@ -26,6 +26,7 @@ class Vizier(node.Node):
         """
 
         # Auto-generate this descriptor based on the nodes
+        # TODO: This may not actually be necessary
         vizier_descriptor = {
             "end_point": "vizier",
             "links": {},
@@ -38,9 +39,8 @@ class Vizier(node.Node):
         self.nodes_to_descriptors = {}
         self.link_graph = {}
         self.links = []
-        self.executor = futures.ThreadPoolExecutor(max_workers=100)
 
-    def start(self, nodes, retries=15, timeout=0.25):
+    def start(self, nodes, retries=15, timeout=0.25, max_workers=100):
         """Starts the vizier node
 
         Starts the underlying MQTT client and makes GET requests for specified nodes.  These requests retrieve all the relevant data for the nodes so that
@@ -54,7 +54,9 @@ class Vizier(node.Node):
         self.mqtt_client.start()
 
         request_links = [x + '/node_descriptor' for x in nodes]
-        results = list(self.executor.map(lambda x: self._make_request('GET', x, {}, retries=retries, timeout=timeout), request_links))
+        # Paralellize GET requests
+        with futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            results = list(executor.map(lambda x: self._make_request('GET', x, {}, retries=retries, timeout=timeout), request_links))
 
         # Check that we got all the required node descriptors
         for i, r in enumerate(results):
@@ -173,15 +175,13 @@ class Vizier(node.Node):
 
         if(link in self.links):
             if(self.network_descriptor[link]['type'] == 'DATA'):
-                self._make_request('GET', link, {}, retries=retries, timeout=timeout)
+                return self._make_request('GET', link, {}, retries=retries, timeout=timeout)
             else:
                 raise ValueError('Link is not type DATA ({})'.format(self.network_descriptor[link]))
         else:
             raise ValueError('Link was not present. Try runnning discover on some nodes first')
-        pass
 
     def stop(self):
         """Safely shuts down the vizier node."""
 
         super().stop()
-        self.executor.shutdown()

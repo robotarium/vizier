@@ -53,9 +53,6 @@ class Node:
         # Channel on which requests are received
         self.request_channel = utils.create_request_link(self.end_point)
 
-        # Define an executor for making requests
-        self.executor = None
-
         # Some logging definitions.
         # TODO: This probably needs to change at some point.
         if not logger:
@@ -78,7 +75,7 @@ class Node:
             timeout (double): Timeout to wait for return message on each request
 
         Returns:
-            A JSON-formatted dict representing the contents of the message
+            A JSON-formatted dict representing the contents of the message.  For example
         """
 
         # If we didn't get a request_id, create one
@@ -123,6 +120,67 @@ class Node:
         self.mqtt_client.unsubscribe(response_link)
 
         return decoded_message
+
+    def _handle_request(self, network_message):
+        """Private function for handling incoming network requests.  All requests on the channel <node_name>/requests
+        are passed to this function.  Then, responses are returned on the channel <node_name>/responses/<message_id>.
+
+        Args:
+            network_message (bytes): A UTF-8-encoded string representing a JSON-formatted request message.
+        """
+
+        # Make request handler for vizier network.  Later this function is attached as a callback to
+        # <node_name>/requests to handle incoming requests.  All requests are passed through this function
+        encountered_error = False
+        try:
+            decoded_message = json.loads(network_message.decode(encoding='UTF-8'))
+        except Exception as e:
+            self.logger.error('Received undecodable network message in request handler')
+            self.logger.error(repr(e))
+            encountered_error = True
+
+        # Check to make sure that it's a valid request
+        # TODO: Handle error in a more specific way
+        if('id' not in decoded_message):
+            # This is an error.  Return from the callback
+            self.logger.error("Request received without valid id")
+            encountered_error = True
+        else:
+            message_id = decoded_message['id']
+
+        if('method' not in decoded_message):
+            # This is an error.  Return from the callback
+            self.logger.error('Request received without valid method')
+            encountered_error = True
+        else:
+            method = decoded_message['method']
+
+        if('link' not in decoded_message):
+            # This is an error.  Return from the callback
+            self.logger.error('Request received without valid link')
+            encountered_error = True
+        else:
+            requested_link = decoded_message['link']
+
+        if(encountered_error):
+            # TODO: Create and send error message
+            # response = utils.create_response(_http_codes['not_found'], {"error": "Encountered error in request"}, "ERROR")
+            # response_channel = utils.create_response_link(self.end_point, message_id)
+            return
+
+        # We have a valid request at this point
+        if(method == 'GET'):
+            self.logger.info('Received GET request for topic %s' % requested_link)
+            self.logger.info(repr(decoded_message))
+            # Handle the get request by looking for information under the specified URI
+            if(requested_link in self.expanded_links):
+                # If we have any record of this URI, create a response message
+                response = utils.create_response(_http_codes['success'],
+                                                 self.expanded_links[requested_link]['body'], self.expanded_links[requested_link]['type'])
+                response_channel = utils.create_response_link(self.end_point, message_id)
+                self.mqtt_client.send_message(response_channel, json.dumps(response).encode(encoding='UTF-8'))
+
+            # TODO: Handle other methods?
 
     def put(self, link, info):
         """Puts data on a particular link
@@ -244,69 +302,14 @@ class Node:
         # Start the MQTT client to ensure we can attach this callback
         self.mqtt_client.start()
 
-        # Make request handler for vizier network.  Later this function is attached as a callback to
-        # <node_name>/requests to handle incoming requests.  All requests are passed through this function
-        def request_handler(network_message):
-            encountered_error = False
-            try:
-                decoded_message = json.loads(network_message.decode(encoding='UTF-8'))
-            except Exception as e:
-                # TODO: Put actual logging here
-                self.logger.error('Received undecodable network message in request handler')
-                self.logger.error(repr(e))
-                encountered_error = True
-
-            # Check to make sure that it's a valid request
-            # TODO: Handle error in a more specific way
-            if('id' not in decoded_message):
-                # This is an error.  Return from the callback
-                self.logger.error("Request received without valid id")
-                encountered_error = True
-            else:
-                message_id = decoded_message['id']
-
-            if('method' not in decoded_message):
-                # This is an error.  Return from the callback
-                self.logger.error('Request received without valid method')
-                encountered_error = True
-            else:
-                method = decoded_message['method']
-
-            if('link' not in decoded_message):
-                # This is an error.  Return from the callback
-                self.logger.error('Request received without valid link')
-                encountered_error = True
-            else:
-                requested_link = decoded_message['link']
-
-            if(encountered_error):
-                # TODO: Create and send error message
-                # response = utils.create_response(_http_codes['not_found'], {"error": "Encountered error in request"}, "ERROR")
-                # response_channel = utils.create_response_link(self.end_point, message_id)
-                return
-
-            # We have a valid request at this point
-            if(method == 'GET'):
-                self.logger.info('Received GET request for topic %s' % requested_link)
-                self.logger.info(repr(decoded_message))
-                # Handle the get request by looking for information under the specified URI
-                if(requested_link in self.expanded_links):
-                    # If we have any record of this URI, create a response message
-                    response = utils.create_response(_http_codes['success'],
-                                                     self.expanded_links[requested_link]['body'], self.expanded_links[requested_link]['type'])
-                    response_channel = utils.create_response_link(self.end_point, message_id)
-                    self.mqtt_client.send_message(response_channel, json.dumps(response).encode(encoding='UTF-8'))
-
-                # TODO: Fill in other methods
-
         # Subscribe to requests channel with created request handler
-        self.mqtt_client.subscribe_with_callback(self.request_channel, request_handler)
+        self.mqtt_client.subscribe_with_callback(self.request_channel, self._handle_request)
 
         # Executor for handling multiple GET requests
-        # This may (or may not) be necessary
-        self.executor = futures.ThreadPoolExecutor(max_workers=100)
-        receive_results = dict(zip(self.requested_links, self.executor.map(lambda x: self._make_request('GET', x, {}, timeout=timeout, retries=retries),
-                                                                           self.requested_links.keys())))
+        # TODO: Make max workers configurable
+        with futures.ThreadPoolExecutor(max_workers=100) as executor:
+            receive_results = dict(zip(self.requested_links, executor.map(lambda x: self._make_request('GET', x, {}, timeout=timeout, retries=retries),
+                                                                          self.requested_links.keys())))
 
         # Ensure that all required links were obtained
         error = False
