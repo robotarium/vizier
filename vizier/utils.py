@@ -236,12 +236,15 @@ def generate_links_from_descriptor(descriptor):
     # and the type defaults to the Boolean value of the 'required' field
     requests_d = {}
     for x in requests:
-        if isinstance(x, str):
-            requests_d[x] = True
+        # Check optional keys
+        if('required' in x):
+            # optional key is included
+            x['required'] = False
+
+        # Put into dictionary rather than list form
+        if('link' in x and 'required' in x):
+            requests_d[x['link']] = x
         else:
-            if('link' in x and 'required' in x):
-                requests_d[x['link']] = x['required']
-            else:
-                raise ValueError('Request type must be in proper format')
+            raise ValueError('Request type must be in proper format')
 
     return expanded_links, requests_d

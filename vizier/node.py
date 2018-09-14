@@ -22,6 +22,7 @@ class Node:
         mqtt_client: Underlying Paho MQTT client
         node_descriptor (dict): JSON-formmated dict used containing information about the node
         ...
+
     """
 
     def __init__(self, broker_host, broker_port, node_descriptor, logger=None):
@@ -76,6 +77,7 @@ class Node:
 
         Returns:
             A JSON-formatted dict representing the contents of the message.  For example
+
         """
 
         # If we didn't get a request_id, create one
@@ -127,6 +129,7 @@ class Node:
 
         Args:
             network_message (bytes): A UTF-8-encoded string representing a JSON-formatted request message.
+
         """
 
         # Make request handler for vizier network.  Later this function is attached as a callback to
@@ -193,6 +196,7 @@ class Node:
 
         Raises:
             ValueError: If the provided link is not classified as DATA
+
         """
 
         # Ensure that the link has been specified by the node descriptor
@@ -214,6 +218,7 @@ class Node:
 
         Raises:
             ValueError: If the provided link is not classified as STREAM
+
         """
 
         if(link in self.publishable_links):
@@ -235,6 +240,7 @@ class Node:
 
         Raises:
             ValueErorr: If link is not classified as gettable (remote DATA)
+
         """
 
         if(link in self.gettable_links):
@@ -251,7 +257,9 @@ class Node:
 
         Raises:
             ValueError: If link is not classified as subscrbable (remote STREAM)
+
         """
+
         if(link in self.subscribable_links):
             q = self.mqtt_client.subscribe(link)
             return q
@@ -267,6 +275,7 @@ class Node:
 
         Raises:
             ValueError: If the provided link is not subscribable (remote STREAM)
+
         """
         if(link in self.subscribable_links):
             self.mqtt_client.subscribe_with_callback(link, callback)
@@ -281,6 +290,7 @@ class Node:
 
         Raises:
             ValueError: If the provided link is not subscribable (remote STREAM)
+
         """
 
         if(link in self.subscribable_links):
@@ -297,12 +307,13 @@ class Node:
 
         Raises:
             ValueError: If all requests were not available on the network
+
         """
 
         # Start the MQTT client to ensure we can attach this callback
         self.mqtt_client.start()
 
-        # Subscribe to requests channel with created request handler
+        # Subscribe to requests channel with request handler
         self.mqtt_client.subscribe_with_callback(self.request_channel, self._handle_request)
 
         # Executor for handling multiple GET requests
@@ -316,7 +327,8 @@ class Node:
         failed_to_get = []
         for x, y in receive_results.items():
             if y is None:
-                if(self.requested_links[x] == 'required'):
+                # At this point, 'required' key is definitely included from the parsing, so we can just check for it
+                if(self.requested_links[x]['required']):
                     error = True
                     failed_to_get.append(x)
                 else:

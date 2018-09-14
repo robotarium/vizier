@@ -7,7 +7,16 @@
 			"type": "DATA"
     		} 
   	},
-  	"requests" : [{"link": "a/a_sub", "required": true},
-	  	    "a/a_sub2",
-	  	    {"link": "optional_topic1", "required": false}]
+  	"requests" : 
+	[
+		{"link": "a/a_sub", 
+		 "required": true,
+		 "type": "STREAM"},
+		 {"link": "a/a_sub2", 
+		  "type": "DATA",
+		  "required": true},
+	  	 {"link": "optional_topic1", 
+	          "type": "DATA",
+		  "required": false}
+	]
 }
