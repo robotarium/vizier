@@ -38,7 +38,7 @@ class Node:
         # usually access it to retrieve this data
         self.expanded_links, self.requested_links = utils.generate_links_from_descriptor(node_descriptor)
         # By convention, the node descriptor is always on this link
-        self.expanded_links[self.end_point+'/node_descriptor'] = {'type': 'DATA', 'body': node_descriptor}
+        self.expanded_links[self.end_point + '/node_descriptor'] = {'type': 'DATA', 'body': node_descriptor}
         self.host = broker_host
         self.port = broker_port
 
@@ -47,9 +47,13 @@ class Node:
         self.puttable_links = {x for x, y in self.expanded_links.items() if y['type'] == 'DATA'} - {self.end_point+'/node_descriptor'}
         self.publishable_links = {x for x, y in self.expanded_links.items() if y['type'] == 'STREAM'}
 
-        # The next two values are set later in the 'connect' method
-        self.gettable_links = set()
-        self.subscribable_links = set()
+        # Parse out data/stream topics
+        self.gettable_links = {x for x, y in self.requested_links.items() if y['type'] == 'DATA'}
+        self.subscribable_links = {x for x, y in self.requested_links.items() if y['type'] == 'STREAM'}
+
+        ## The next two values are set later in the 'connect' method
+        #self.gettable_links = set()
+        #self.subscribable_links = set()
 
         # Channel on which requests are received
         self.request_channel = utils.create_request_link(self.end_point)
@@ -298,7 +302,7 @@ class Node:
         else:
             raise ValueError('Link ({0}) not contained in subscribable_links ({1})'.format(link, self.subscribable_links))
 
-    def start(self, retries=10, timeout=0.25):
+    def start(self, retries=10, timeout=0.25, max_workers=100):
         """Start the MQTT client and connect to the vizier network
 
         Args:
@@ -318,9 +322,11 @@ class Node:
 
         # Executor for handling multiple GET requests
         # TODO: Make max workers configurable
-        with futures.ThreadPoolExecutor(max_workers=100) as executor:
-            receive_results = dict(zip(self.requested_links, executor.map(lambda x: self._make_request('GET', x, {}, timeout=timeout, retries=retries),
-                                                                          self.requested_links.keys())))
+        # Get required requests.  Key will be present due to prior parsing
+        required_links = [x for x, y in self.requested_links.items() if y['required']]
+        with futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            receive_results = dict(zip(required_links, executor.map(lambda x: self._make_request('GET', x, {}, timeout=timeout, retries=retries),
+                                                       required_links)))
 
         # Ensure that all required links were obtained
         error = False
@@ -340,10 +346,6 @@ class Node:
 
         # self.logger.info(repr(receive_results))
         self.logger.info('Succesfully connected to vizier network')
-
-        # Parse out data/stream topics
-        self.gettable_links = {x for x, y in receive_results.items() if y is not None and y['type'] == 'DATA'}
-        self.subscribable_links = {x for x, y in receive_results.items() if y is not None and y['type'] == 'STREAM'}
 
     def stop(self):
         """Stop the MQTT client"""
