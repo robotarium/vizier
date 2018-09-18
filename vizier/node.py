@@ -249,7 +249,7 @@ class Node:
 
         if(link in self.gettable_links):
             response = self._make_request('GET', link, {}, timeout=timeout, retries=retries)
-            if response is None
+            if response is None:
                 return 
             else:
                 return response['body']
