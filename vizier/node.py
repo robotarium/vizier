@@ -249,7 +249,10 @@ class Node:
 
         if(link in self.gettable_links):
             response = self._make_request('GET', link, {}, timeout=timeout, retries=retries)
-            return response['body']
+            if response is None
+                return 
+            else:
+                return response['body']
         else:
             raise ValueError('Link ({0}) not contained in gettable links ({1})'.format(link, self.gettable_links))
 
