@@ -237,12 +237,12 @@ def generate_links_from_descriptor(descriptor):
     requests_d = {}
     for x in requests:
         # Check optional keys
-        if('required' in x):
+        if('required' not in x):
             # optional key is included
             x['required'] = False
 
         # Put into dictionary rather than list form
-        if('link' in x and 'required' in x):
+        if('link' in x):
             requests_d[x['link']] = x
         else:
             raise ValueError('Request type must be in proper format')
