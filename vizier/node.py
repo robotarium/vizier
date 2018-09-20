@@ -51,10 +51,6 @@ class Node:
         self.gettable_links = {x for x, y in self.requested_links.items() if y['type'] == 'DATA'}
         self.subscribable_links = {x for x, y in self.requested_links.items() if y['type'] == 'STREAM'}
 
-        ## The next two values are set later in the 'connect' method
-        #self.gettable_links = set()
-        #self.subscribable_links = set()
-
         # Channel on which requests are received
         self.request_channel = utils.create_request_link(self.end_point)
 
@@ -208,7 +204,7 @@ class Node:
             # This operation should be threadsafe (for future reference)
             # Ensure that the link is of type DATA
             self.expanded_links[link]['body'] = info
-            self.logger.info('Put something on link %s' % link)
+            #self.logger.info('Put something on link %s' % link)
         else:
             # TODO: Handle error
             raise ValueError
