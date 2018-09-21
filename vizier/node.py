@@ -17,7 +17,6 @@ class Node:
     """ Represents a node on the vizier network...
 
     More stuff
-
     Attributes:
         mqtt_client: Underlying Paho MQTT client
         node_descriptor (dict): JSON-formmated dict used containing information about the node
@@ -25,11 +24,15 @@ class Node:
 
     """
 
-    def __init__(self, broker_host, broker_port, node_descriptor, logger=None):
+    def __init__(self, broker_host, broker_port, node_descriptor, logger=None, max_workers=20):
+
+        # Executor for parallelizing requests
+        self.executor = futures.ThreadPoolExecutor(max_workers=max_workers)
 
         # Setting up MQTT client as well as the dicts to hold DATA information
         self.mqtt_client = mqtt.MQTTInterface(port=broker_port, host=broker_host)
         self.node_descriptor = node_descriptor
+
         # Store the end point of the node for convenience
         self.end_point = node_descriptor['end_point']
 
@@ -37,8 +40,10 @@ class Node:
         # All data regarding the link, including the body, is stored in this dictionary.  Various requests will
         # usually access it to retrieve this data
         self.expanded_links, self.requested_links = utils.generate_links_from_descriptor(node_descriptor)
+
         # By convention, the node descriptor is always on this link
         self.expanded_links[self.end_point + '/node_descriptor'] = {'type': 'DATA', 'body': node_descriptor}
+
         self.host = broker_host
         self.port = broker_port
 
@@ -58,25 +63,24 @@ class Node:
         # TODO: This probably needs to change at some point.
         if not logger:
             logging.basicConfig(format='%(levelname)s %(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
-
             logger = logging.getLogger(__name__)
             logger.setLevel(logging.DEBUG)
 
         self.logger = logger
 
-    def _make_request(self, method, link, body, request_id=None, retries=15, timeout=0.25):
-        """Makes a get request for data on a particular topic. Will try 'retries' amount for 'timeout' seconds.
+    def _make_request(self, method, link, body, request_id=None, attempts=15, timeout=0.25):
+        """Makes a request for data on a particular topic.  The exact action depends on the specified method
 
         Args:
             method (str): Method for request (e.g., 'GET')
             link (str): Link on which to make request
             body (dict): JSON-formatted dict representing the body of the message
             request_id (str): Unique request ID for this message
-            retries (int): Number of times to retry the request, if it times out
+            attempts (int): Number of times to retry the request, if it times out
             timeout (double): Timeout to wait for return message on each request
 
         Returns:
-            A JSON-formatted dict representing the contents of the message.  For example
+            A JSON-formatted dict representing the contents of the message.
 
         """
 
@@ -94,9 +98,10 @@ class Node:
         decoded_message = None
         encoded_request = json.dumps(utils.create_request(request_id, method, link, body)).encode(encoding='UTF-8')
 
-        # Repeat request a number of times based on the specified number of retries
-        for _ in range(retries):
+        # Repeat request a number of times based on the specified number of attempts
+        for _ in range(attempts):
             self.mqtt_client.send_message(request_link, encoded_request)
+
             # We expect this to potentially fail with a timeout
             try:
                 mqtt_message = q.get(timeout=timeout)
@@ -112,8 +117,7 @@ class Node:
             except Exception:
                 # Just pass here because we expect to fail.  In the future,
                 # split the exceptions up into reasonable cases
-                self.logger.error('Couldn\'t decode network message')
-                pass
+                self.logger.error('Could not decode network message')
 
         if(decoded_message is None):
             self.logger.error('Get request on topic ({}) failed'.format(link))
@@ -204,7 +208,7 @@ class Node:
             # This operation should be threadsafe (for future reference)
             # Ensure that the link is of type DATA
             self.expanded_links[link]['body'] = info
-            #self.logger.info('Put something on link %s' % link)
+            # self.logger.info('Put something on link %s' % link)
         else:
             # TODO: Handle error
             raise ValueError
@@ -227,13 +231,13 @@ class Node:
             self.logger.error('Requested link (%s) not classified as STREAM' % link)
             raise ValueError
 
-    def get(self, link, timeout=1, retries=5):
+    def get(self, link, timeout=0.20, attempts=5):
         """Make a get request on a particular link, provided that the link is in the gettable links for the node.
 
         Args:
             link (str): Link on which GET request is made
             timeout (double): Timeout for GET request
-            retries (int): Number of times to retry GET request
+            attempts (int): Number of times to attempt each GET request
 
         Returns:
             Data that was retrieved from the link as a JSON-formatted object
@@ -244,9 +248,9 @@ class Node:
         """
 
         if(link in self.gettable_links):
-            response = self._make_request('GET', link, {}, timeout=timeout, retries=retries)
+            response = self._make_request('GET', link, {}, timeout=timeout, attempts=attempts)
             if response is None:
-                return 
+                return
             else:
                 return response['body']
         else:
@@ -301,11 +305,52 @@ class Node:
         else:
             raise ValueError('Link ({0}) not contained in subscribable_links ({1})'.format(link, self.subscribable_links))
 
-    def start(self, retries=10, timeout=0.25, max_workers=100):
+    def verify_dependencies(self, attempts=10, timeout=0.25):
+        """Verifies the node's dependencies.  In particular, it attempts to make a GET request for each required request in the node descriptor
+
+        Args:
+            attempts (int): number of times to attempt the GET requests
+            timeout (float): timeout for the GET requests in seconds
+
+        Returns:
+            True if the required dependencies were present on the network
+
+        Raises:
+            ValueError: If the requests were not present on the network
+
+        """
+
+        # Executor for handling multiple GET requests
+        # Get required requests.  Key 'required' will be present due to prior parsing
+        required_links = [x for x, y in self.requested_links.items() if y['required']]
+        receive_results = dict(zip(required_links, self.executor.map(lambda x: self._make_request('GET', x, {}, timeout=timeout, attempts=attempts),
+                                                                     required_links)))
+
+        # Ensure that all required links were obtained
+        deps_satisfied = True
+        failed_to_get = []
+        for x, y in receive_results.items():
+            if y is None:
+                # At this point, 'required' key is definitely included from the parsing, so we can just check for it
+                if(self.requested_links[x]['required']):
+                    deps_satisfied = False
+                    failed_to_get.append(x)
+                else:
+                    self.logger.error('Could not get required request(s) {}'.format(x))
+
+        # If one of the required links couldn't be obtained, throw an error
+        if (not deps_satisfied):
+            raise ValueError('Could not get required links {}'.format(failed_to_get))
+
+        self.logger.info('Succesfully connected to vizier network')
+
+        return deps_satisfied
+
+    def start(self, attempts=10, timeout=0.25):
         """Start the MQTT client and connect to the vizier network
 
         Args:
-            retries (int):  Number of times to retry each GET request
+            attempts (int):  Number of times to attempt each GET request
             timeout (double): Timeout for each GET Request
 
         Raises:
@@ -319,32 +364,7 @@ class Node:
         # Subscribe to requests channel with request handler
         self.mqtt_client.subscribe_with_callback(self.request_channel, self._handle_request)
 
-        # Executor for handling multiple GET requests
-        # TODO: Make max workers configurable
-        # Get required requests.  Key will be present due to prior parsing
-        required_links = [x for x, y in self.requested_links.items() if y['required']]
-        with futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            receive_results = dict(zip(required_links, executor.map(lambda x: self._make_request('GET', x, {}, timeout=timeout, retries=retries),
-                                                       required_links)))
-
-        # Ensure that all required links were obtained
-        error = False
-        failed_to_get = []
-        for x, y in receive_results.items():
-            if y is None:
-                # At this point, 'required' key is definitely included from the parsing, so we can just check for it
-                if(self.requested_links[x]['required']):
-                    error = True
-                    failed_to_get.append(x)
-                else:
-                    self.logger.info('Could not get optional request {}'.format(x))
-
-        # If one of the required links couldn't be obtained, throw an error
-        if error:
-            raise ValueError('Could not get required links {}'.format(failed_to_get))
-
-        # self.logger.info(repr(receive_results))
-        self.logger.info('Succesfully connected to vizier network')
+        return self.verify_dependencies(attempts=attempts, timeout=timeout)
 
     def stop(self):
         """Stop the MQTT client"""
