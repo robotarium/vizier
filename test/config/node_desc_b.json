@@ -14,6 +14,6 @@
 		 "type": "STREAM"},
 		 {"link": "a/a_sub2", 
 		  "type": "DATA",
-		  "required": true}
+		  "required": false}
 	]
 }

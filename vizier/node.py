@@ -5,7 +5,6 @@ import vizier.utils as utils
 
 # For logging
 import logging
-
 # HTTP codes for convenience later
 _http_codes = {'success': 200, 'not_found': 404}
 
@@ -322,7 +321,6 @@ class Node:
 
         # Executor for handling multiple GET requests
         # Get required requests.  Key 'required' will be present due to prior parsing
-        print(self.requested_links)
         required_links = [x for x, y in self.requested_links.items() if y['required']]
         receive_results = dict(zip(required_links, self.executor.map(lambda x: self._make_request('GET', x, {}, timeout=timeout, attempts=attempts),
                                                                      required_links)))
