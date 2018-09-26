@@ -151,7 +151,7 @@ def extract_keys(descriptor):
         raise ValueError
 
     # Initialize body to empty dict
-    extracted['body'] = {}
+    extracted['body'] = ""
 
     return extracted
 
