@@ -57,8 +57,7 @@ class MQTTInterface:
             self.keep_alive = keep_alive
 
             # Lock for the various methods
-            self.lock = threading.RLock()
-            self.publish_lock = threading.Lock()
+            self.lock = threading.Lock()
 
             # self.client_queue = queue.Queue()
             self.client = mqtt.Client()
@@ -86,11 +85,9 @@ class MQTTInterface:
             msg: MQTT payload
         """
 
-        # Unsubscribe could happen between these statements, so we need the lock
-        with self.lock:
-            if(msg.topic in self.callbacks):
-                # Just pass the byte payload directly to the callback, since the other info is more or less useless
-                self.callbacks[msg.topic](msg.payload)
+        callback = self.callbacks.get(msg.topic)
+        if(callback):
+            callback(msg.payload)
 
     def subscribe_with_callback(self, channel, callback):
         """Thread safe.  Subscribes to a channel with a callback using the underlying MQTT client.
@@ -102,9 +99,9 @@ class MQTTInterface:
             callback (function): Callback function for the topic
         """
 
-        #with self.lock:
-        self.callbacks.update({channel: callback})
-        self.client.subscribe(channel)
+        with self.lock:
+            self.callbacks.update({channel: callback})
+            self.client.subscribe(channel)
 
     def subscribe(self, channel):
         """Thread safe. A subscribe routine that yields a queue to which all subsequent messages to the given topic will be passed
@@ -134,9 +131,9 @@ class MQTTInterface:
             channel (str): Channel from which the client unsubscribes
         """
 
-        # with self.lock:
-        self.client.unsubscribe(channel)
-        self.channels.pop(channel, None)
+        with self.lock:
+            self.client.unsubscribe(channel)
+            self.channels.pop(channel, None)
 
     def send_message(self, channel, message):
         """Thread safe.  Sends a message on the MQTT client.
@@ -146,10 +143,8 @@ class MQTTInterface:
             message (bytes): Message to be sent.  Should be in an encoded bytes format (like UTF-8)
         """
 
-        # TODO: Ensure that this function is actually thread-safe.  Don't think it is
-        # TODO: Rename to publish?
-        with self.publish_lock:
-            self.client.publish(channel, message)
+        # TODO: Ensure that this function is actually thread-safe
+        self.client.publish(channel, message)
 
     def start(self, timeout=None):
         """Handles starting the underlying MQTT client"""
