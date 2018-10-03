@@ -124,8 +124,6 @@ class Node:
         # Make sure that we unsubscribe from the response channel, and, finally, return the decoded message
         self.mqtt_client.unsubscribe(response_link)
 
-        print('got here')
-
         return decoded_message
 
     def _handle_request(self, network_message):
