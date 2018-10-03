@@ -57,7 +57,7 @@ class MQTTInterface:
             self.keep_alive = keep_alive
 
             # Lock for the various methods
-            self.lock = threading.Lock()
+            self.lock = threading.RLock()
             self.publish_lock = threading.Lock()
 
             # self.client_queue = queue.Queue()

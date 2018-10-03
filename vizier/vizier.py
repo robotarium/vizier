@@ -171,7 +171,6 @@ class Vizier(node.Node):
             raise ValueError('Link was not present!')
 
     def get(self, link, retries=10, timeout=0.25):
-        # TODO: finish
 
         if(link in self.links):
             if(self.network_descriptor[link]['type'] == 'DATA'):
