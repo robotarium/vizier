@@ -102,9 +102,9 @@ class MQTTInterface:
             callback (function): Callback function for the topic
         """
 
-        with self.lock:
-            self.callbacks.update({channel: callback})
-            self.client.subscribe(channel)
+        #with self.lock:
+        self.callbacks.update({channel: callback})
+        self.client.subscribe(channel)
 
     def subscribe(self, channel):
         """Thread safe. A subscribe routine that yields a queue to which all subsequent messages to the given topic will be passed
@@ -134,9 +134,9 @@ class MQTTInterface:
             channel (str): Channel from which the client unsubscribes
         """
 
-        with self.lock:
-            self.client.unsubscribe(channel)
-            self.channels.pop(channel, None)
+        # with self.lock:
+        self.client.unsubscribe(channel)
+        self.channels.pop(channel, None)
 
     def send_message(self, channel, message):
         """Thread safe.  Sends a message on the MQTT client.
