@@ -1,8 +1,6 @@
 import paho.mqtt.client as mqtt
 import queue
 import threading
-
-# For logging
 import logging
 
 
@@ -58,8 +56,9 @@ class MQTTInterface:
             self.port = port
             self.keep_alive = keep_alive
 
-            # Re-entrant lock for the various methods
+            # Lock for the various methods
             self.lock = threading.Lock()
+            self.publish_lock = threading.Lock()
 
             # self.client_queue = queue.Queue()
             self.client = mqtt.Client()
@@ -147,8 +146,10 @@ class MQTTInterface:
             message (bytes): Message to be sent.  Should be in an encoded bytes format (like UTF-8)
         """
 
-        # TODO: Ensure that this function is actually thread-safe
-        self.client.publish(channel, message)
+        # TODO: Ensure that this function is actually thread-safe.  Don't think it is
+        # TODO: Rename to publish?
+        with self.publish_lock:
+            self.client.publish(channel, message)
 
     def start(self, timeout=None):
         """Handles starting the underlying MQTT client"""
