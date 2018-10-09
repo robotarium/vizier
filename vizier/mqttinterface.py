@@ -60,7 +60,7 @@ class MQTTInterface:
 
     """
 
-    def __init__(self, port=1884, keep_alive=60, host="localhost", logging_config=None):
+    def __init__(self, port=1884, keep_alive=10, host="localhost", logging_config=None):
             # Set up MQTT client
             self._host = host
             self._port = port
@@ -99,6 +99,9 @@ class MQTTInterface:
 
         It's also called when the client reconnects, so we handle signaling the reconnect thread in this as well.
 
+        Args:
+            Unused for now.
+
         """
 
         self.logger.info('MQTT client successfully connected to broker on host: {0}, port: {1}'.format(self._host, self._port))
@@ -131,9 +134,9 @@ class MQTTInterface:
         """Thread safe. Callback handling messages from the client.  Either puts the message into a callback or a channel
 
         Args:
-            client: Client from which message was recieved
-            userdata: Data about the client
-            msg: MQTT payload
+            client: Client from which message was recieved.
+            userdata: Data about the client.
+            msg: MQTT payload.
 
         """
 
@@ -144,27 +147,26 @@ class MQTTInterface:
     def subscribe_with_callback(self, channel, callback):
         """Thread safe.  Subscribes to a channel with a callback using the underlying MQTT client.
 
-        All messages to that channel will be passed into the callback
+        All messages to that channel will be passed into the callback.
 
         Args:
-            channel (str): Channel to which the node subscribes
-            callback (function): Callback function for the topic
+            channel (str): Channel to which the node subscribes.
+            callback (function): Callback function for the topic.
 
         """
-
 
         with self.lock:
             self.callbacks.update({channel: callback})
             self.client.subscribe(channel)
 
     def subscribe(self, channel):
-        """Thread safe. A subscribe routine that yields a queue to which all subsequent messages to the given topic will be passed
+        """Thread safe. A subscribe routine that yields a queue to which all subsequent messages to the given topic will be passed.
 
         Args:
-            channel (str): Channel to which the client will subscribe
+            channel (str): Channel to which the client will subscribe.
 
         Returns:
-            A queue containing all future messages from the supplied channel
+            A queue containing all future messages from the supplied channel.
 
         """
 
@@ -180,10 +182,10 @@ class MQTTInterface:
         return q
 
     def unsubscribe(self, channel):
-        """Thread safe. Unsubscribes from a particular channel
+        """Thread safe. Unsubscribes from a particular channel.
 
         Args:
-            channel (str): Channel from which the client unsubscribes
+            channel (str): Channel from which the client unsubscribes.
 
         """
 
@@ -195,8 +197,8 @@ class MQTTInterface:
         """Thread safe.  Sends a message on the MQTT client.
 
         Args:
-            channel (str): string (channel on which to send message)
-            message (bytes): Message to be sent.  Should be in an encoded bytes format (like UTF-8)
+            channel (str): string (channel on which to send message).
+            message (bytes): Message to be sent.  Should be in an encoded bytes format (like UTF-8).
 
         """
 
@@ -204,7 +206,7 @@ class MQTTInterface:
         self.client.publish(channel, message)
 
     def start(self, timeout=None):
-        """Handles starting the underlying MQTT client"""
+        """Handles starting the underlying MQTT client."""
 
         # Attempt to connect the client to the specified broker
         try:
@@ -226,10 +228,11 @@ class MQTTInterface:
         self._cdl.wait(timeout=timeout)
 
     def stop(self):
-        """Handles stopping the MQTT client"""
+        """Handles stopping the MQTT client."""
 
         # Stop reconnect thread
         self._signal_reconnect.put(None)
+        self._reconnect_thread.join()
 
         # Stops MQTT client
         self.client.loop_stop()
