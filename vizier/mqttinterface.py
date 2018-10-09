@@ -2,6 +2,9 @@ import paho.mqtt.client as mqtt
 import queue
 import threading
 import logging
+import string
+import random
+import enum
 
 
 # CountDownLatch for some MQTT client checking
@@ -9,8 +12,9 @@ class _CountDownLatch():
     """This class handles some synchronization behind starting the paho MQTT client
 
     Attributes:
-        _cv (threading.Condition): Condition variable for waiting on the countdown
-        _count (int): Current count of the latch.  Calls to wait return when count reaches 0
+        _cv (threading.Condition): Condition variable for waiting on the countdown.
+        _count (int): Current count of the latch.  Calls to wait return when count reaches 0.
+
     """
 
     def __init__(self, count=1):
@@ -32,14 +36,19 @@ class _CountDownLatch():
                 self._cv.notify_all()
 
     def wait(self, timeout=None):
-        """Thread safe.  Waits for the count to reach 0
+        """Thread safe.  Waits for the count to reach 0.
 
         Args:
-            timeout (double): timeout to wait on latch
+            timeout (double): timeout to wait on latch.
+
         """
 
         with self._cv:
             self._cv.wait_for(self._counted_down, timeout=timeout)
+
+
+class _Task(enum.Enum):
+    RECONNECT = 0
 
 
 class MQTTInterface:
@@ -48,20 +57,30 @@ class MQTTInterface:
     Attributes:
         host (str): The MQTT broker's host to which this client connects.
         port (int): The MQTT broker's port to which this client connects.
+
     """
 
     def __init__(self, port=1884, keep_alive=60, host="localhost", logging_config=None):
             # Set up MQTT client
-            self.host = host
-            self.port = port
-            self.keep_alive = keep_alive
+            self._host = host
+            self._port = port
+            self._keep_alive = keep_alive
+
+            # Internal thread to handle reconnects/resubscribes
+            self._reconnect_thread = None
+            self._signal_reconnect = queue.Queue()
 
             # Lock for the various methods
             self.lock = threading.Lock()
 
-            # self.client_queue = queue.Queue()
-            self.client = mqtt.Client()
+            # Generate a suitably random ID for the MQTT client
+            self._id = 'python_mqtt_' + ''.join(random.choice(string.ascii_uppercase + string.ascii_lowercase + string.digits) for _ in range(30))
+            self.client = mqtt.Client(client_id=self._id)
             self.client.on_message = self._on_message
+
+            # Set up on_connect
+            self._cdl = _CountDownLatch(1)
+            self.client.on_connect = self._on_connect
 
             # I shouldn't need a lock for this...
             self.channels = {}
@@ -75,7 +94,39 @@ class MQTTInterface:
                 self.logger = logging.getLogger(__name__)
                 self.logger.setLevel(logging.DEBUG)
 
-    # The callback for when a PUBLISH message is received from the server.
+    def _on_connect(self, client, userdata, flags, rc):
+        """Called whenever the MQTT client connects to the MQTT broker.
+
+        It's also called when the client reconnects, so we handle signaling the reconnect thread in this as well.
+
+        """
+
+        self.logger.info('MQTT client successfully connected to broker on host: {0}, port: {1}'.format(self._host, self._port))
+        self._cdl.count_down()
+
+        # Signal reconnect thread to reconnect
+        self._signal_reconnect.put(_Task.RECONNECT)
+
+    def _internal_reconnect_task(self):
+        """Meant to be run in an internal thread that handles reconnects.
+
+        This may seem a little weird, but reconnections must be handled this way due to the underlying implementation of the
+        Paho MQTT library.
+
+        """
+
+        msg = -1
+        # Thread stops when None is enqueued
+        while (msg is not None):
+            msg = self._signal_reconnect.get()
+
+            # msg can only be one of the enum items
+            if(msg == _Task.RECONNECT):
+                self.logger.info('Reconnect message received.  Resubscribing to topics ({}).'.format(self.callbacks.keys()))
+                with self.lock:
+                    for sub in self.callbacks.keys():
+                        self.client.subscribe(sub)
+
     def _on_message(self, client, userdata, msg):
         """Thread safe. Callback handling messages from the client.  Either puts the message into a callback or a channel
 
@@ -83,10 +134,11 @@ class MQTTInterface:
             client: Client from which message was recieved
             userdata: Data about the client
             msg: MQTT payload
+
         """
 
         callback = self.callbacks.get(msg.topic)
-        if(callback):
+        if(callback is not None):
             callback(msg.payload)
 
     def subscribe_with_callback(self, channel, callback):
@@ -97,7 +149,9 @@ class MQTTInterface:
         Args:
             channel (str): Channel to which the node subscribes
             callback (function): Callback function for the topic
+
         """
+
 
         with self.lock:
             self.callbacks.update({channel: callback})
@@ -111,6 +165,7 @@ class MQTTInterface:
 
         Returns:
             A queue containing all future messages from the supplied channel
+
         """
 
         # Should be thread safe, since locking is handled in subscribe_with_callback
@@ -129,6 +184,7 @@ class MQTTInterface:
 
         Args:
             channel (str): Channel from which the client unsubscribes
+
         """
 
         with self.lock:
@@ -141,6 +197,7 @@ class MQTTInterface:
         Args:
             channel (str): string (channel on which to send message)
             message (bytes): Message to be sent.  Should be in an encoded bytes format (like UTF-8)
+
         """
 
         # TODO: Ensure that this function is actually thread-safe
@@ -149,31 +206,30 @@ class MQTTInterface:
     def start(self, timeout=None):
         """Handles starting the underlying MQTT client"""
 
-        cdl = _CountDownLatch(1)
-
-        # Local function to handle connection to the MQTT server
-        def on_connect(client, userdata, flags, rc):
-            nonlocal cdl
-            self.logger.info('MQTT client successfully connected to broker on host: {0}, port: {1}'.format(self.host, self.port))
-            cdl.count_down()
-
-        self.client.on_connect = on_connect
-
         # Attempt to connect the client to the specified broker
         try:
-            self.client.connect(self.host, self.port, self.keep_alive)
+            self.client.connect(self._host, self._port, self._keep_alive)
         except Exception as e:
-            self.logger.error('MQTT client could not connect to broker at host: {0}, port: {1}'.format(self.host, self.port))
-            raise e
+            error_msg = 'MQTT client could not connect to broker at host: {0}, port: {1}'.format(self._host, self._port)
+            self.logger.error(error_msg)
+            self.logger.error(repr(e))
+            raise RuntimeError(error_msg)
 
         # Starts MQTT client in background thread.  This has to be done before the client will process any messages
         self.client.loop_start()
 
+        # Start the reconnect thread
+        self._reconnect_thread = threading.Thread(target=self._internal_reconnect_task)
+        self._reconnect_thread.start()
+
         # Have to start client before we wait on CDL.  Client won't process any messages until we start it
-        cdl.wait(timeout=timeout)
+        self._cdl.wait(timeout=timeout)
 
     def stop(self):
         """Handles stopping the MQTT client"""
+
+        # Stop reconnect thread
+        self._signal_reconnect.put(None)
 
         # Stops MQTT client
         self.client.loop_stop()

@@ -87,7 +87,7 @@ def is_subpath_of(superpath, subpath, delimiter='/'):
     Args:
         superpath (str): A string-based path where values are separated by '/'
         subpath (str):  A string-based path where values are separated by '/'
-    subpath: string (separated by /)
+        subpath: string (separated by /)
 
     Returns:
         A bool indicating whether the relation holds
