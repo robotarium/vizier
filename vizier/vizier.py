@@ -2,10 +2,9 @@ import graphviz
 import vizier.utils as utils
 import vizier.node as node
 import concurrent.futures as futures
-
-# TODO: Vizier -> gets all the node descriptors -> ensures dependencies are met
-# TODO: Add some sort of query engine to get vizier to give information about the running nodes.  This would
-# Actually be a more useful feature, anyway
+import argparse
+import logging
+import time
 
 
 # TODO: Split up some of these functions into network query vs graph operations
@@ -15,18 +14,18 @@ class Vizier(node.Node):
     Attributes:
         host (str): MQTT host to which vizier node connects
         port (int):  MQTT port to which vizier node connects
+
     """
 
-    def __init__(self, host, port, logger=None):
+    def __init__(self, host, port, nodes, logger=None):
         """Initializes the vizier node.  Is able to inspect all nodes that are passed in.
 
         Args:
             host (str): MQTT host to which vizier node connects
             port (int):  MQTT port to which vizier node connects
-        """
 
+        """
         # Auto-generate this descriptor based on the nodes
-        # TODO: This may not actually be necessary
         vizier_descriptor = {
             "end_point": "vizier",
             "links": {},
@@ -35,12 +34,15 @@ class Vizier(node.Node):
 
         super().__init__(host, port, vizier_descriptor, logger=logger)
 
-        # To contain future node descriptors
-        self.nodes_to_descriptors = {}
-        self.link_graph = {}
-        self.links = []
+        # To contain future node descriptors.
+        self._nodes = nodes
 
-    def start(self, nodes, retries=15, timeout=0.25, max_workers=100):
+        # These attributes are set in the start method.
+        self._nodes_to_descriptors = None
+        self._link_graph = None
+        self._links = None
+
+    def start(self, attempts=15, timeout=0.25, max_workers=100):
         """Starts the vizier node
 
         Starts the underlying MQTT client and makes GET requests for specified nodes.  These requests retrieve all the relevant data for the nodes so that
@@ -49,59 +51,63 @@ class Vizier(node.Node):
         Args:
             retries (int):  Number of times to retry the GET requests
             timeout (double): Timeout for the GET requests
-        """
 
+        """
         self.mqtt_client.start()
 
-        request_links = [x + '/node_descriptor' for x in nodes]
+        request_links = [x + '/node_descriptor' for x in self._nodes]
         # Paralellize GET requests
         with futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            results = list(executor.map(lambda x: self._make_request('GET', x, {}, retries=retries, timeout=timeout), request_links))
+            results = list(executor.map(lambda x: self._make_request('GET', x, {}, attempts=attempts, timeout=timeout), request_links))
 
         # Check that we got all the required node descriptors
+        in_error = []
         for i, r in enumerate(results):
             if r is None:
-                raise ValueError('Could not retrieve descriptor for node ({})'.format(nodes[i]))
+                in_error.append(self._nodes[i])
 
-        nodes_to_descriptors = dict({x: y['body'] for x, y in zip(nodes, results)})
-        self.nodes_to_descriptors = nodes_to_descriptors
+        # If not empty
+        if(in_error):
+            raise ValueError('Could not retrieve descriptor for nodes ({}).'.format(in_error))
 
-        expanded_descriptors = {x: utils.generate_links_from_descriptor(y) for x, y in self.node_descriptors.items()}
-        self.link_graph = dict({x: {'links': set(y[0]), 'requests': y[1]} for x, y in expanded_descriptors.items()})
-        self.links = set([y for x in self.link_graph.values() for y in x['links']])
+        self._nodes_to_descriptors = dict({x: y['body'] for x, y in zip(self._nodes, results)})
+        self._expanded_descriptors = dict({x: utils.generate_links_from_descriptor(y) for x, y in self._nodes_to_descriptors.items()})
+        self._link_graph = dict({x: {'links': y[0], 'requests': y[1]} for x, y in self._expanded_descriptors.items()})
+        self._links = dict({y: z for x in self._link_graph.values() for y, z in x['links'].items()})
 
-        return self
-
-    def visualize(self, to_display=False):
+    def visualize(self):
         graph = graphviz.Digraph(comment='System Graph')
 
         # Initialize graph and subgraph
-        for x, y in self.link_graph.items():
+        for x, y in self._link_graph.items():
 
-            name = 'cluster'+x if to_display else x
+            name = 'cluster'+x
             subgraph = graphviz.Digraph(name=name)
-
+            subgraph.attr(label=x)
+            subgraph.attr(color='blue')
             # Create a dummy node for inter-graph connections
-            if(to_display):
-                subgraph.node('D'+x, shape='point', style='invis')
+            subgraph.node('dummy_'+x, shape='point', style='invis')
 
             for z in y['links']:
-                subgraph.node(z)  # took out constraint=False
+                subgraph.node(z, label=z+' ('+y['links'][z]['type'].lower()+')')  # took out constraint=False
+
             graph.subgraph(subgraph)
 
-        for x, y in self.link_graph.items():
+        for x, y in self._link_graph.items():
             for z in y['requests']:
-                if(to_display):
-                    edge = 'D'+x
-                    rhead = 'cluster'+x
-                else:
-                    edge = x
-                    rhead = x
-                graph.edge(z, edge, rhead=rhead)  # took out constraint=False
+                from_endpoint = z.split('/')[0]
+                edge = 'dummy_'+x
+                rhead = 'cluster'+x
+                color = 'black' if from_endpoint in self._link_graph else 'red'
+                label = 'required' if y['requests'][z]['required'] else 'optional'
+
+                if(from_endpoint not in self._link_graph):
+                    graph.node(z, color='red', label=z+' (unavailable)')
+
+                graph.edge(z, edge, rhead=rhead, color=color, label=label)  # took out constraint=False
 
         print(graph.source)
-
-        return graph
+        print('~~ PASTE THE ABOVE INTO GRAPHVIZ SOMEWHERE ~~')
 
     def verify_deps(self):
         """Verifies the dependencies of the specified nodes.
@@ -113,74 +119,121 @@ class Vizier(node.Node):
 
         Raises:
             ValueError: If any dependency is unsatified
-        """
 
+        """
         # TODO: Modify this to account for new request structure
         # Filter out optional dependencies
-        only_required = {x: {i for i, j in y['requests'].items() if j} for x, y in self.link_graph.items()}
-        unsatisfied = [{'node': x, 'unsatisfied': y - y.intersection(self.links)}
-                       for x, y in only_required.items() if not y.issubset(self.links)]
+        only_required = dict({x: {i for i, j in y['requests'].items() if j['required']} for x, y in self._link_graph.items()})
+        unsatisfied = [{'node': x, 'unsatisfied': y - y.intersection(self._links)}
+                       for x, y in only_required.items() if not y.issubset(self._links)]
 
         # Now only look at the optional dependencies and see if any are missing
-        only_optional = {x: {i for i, j in y['requests'].items() if not j} for x, y in self.link_graph.items()}
-        optionally_unsatisfied = [{'node': x, 'unsatisfied': y - y.intersection(self.links)} for x, y in only_optional.items() if not y.issubset(self.links)]
+        only_optional = dict({x: {i for i, j in y['requests'].items() if not j['required']} for x, y in self._link_graph.items()})
+        optionally_unsatisfied = list([{'endpoint': x,
+                                        'unsatisfied': y - y.intersection(self._links)} for x, y in only_optional.items() if not y.issubset(self._links)])
 
-        if optionally_unsatisfied:
-            self.logger.info('Optional dependencies {} unsatisfied'.format(optionally_unsatisfied))
-
-        if unsatisfied:
-            raise ValueError('Dependencies {} unsatisfied'.format(unsatisfied))
-        else:
-            return True
+        return {'unsatisfied': unsatisfied, 'optionally_unsatisfied': optionally_unsatisfied}
 
     def get_links(self):
-        return self.links
+        return self._links
 
-    def get_deps(self):
-        return dict({x: set(y['requests']) for x, y in self.link_graph.items()})
-
-    def get_link_deps(self):
-        deps = self.get_deps()
-
-        return dict({x: set([z.split('/')[0] for z in y]) for x, y in deps.items()})
-
-    def listen(self, link):
+    def listen(self, link, callback=print):
         """Listens on a particular link for all information.  Topic must be subscribable (i.e., remote STREAM)
 
         Args:
             link (str): The link to which the vizier listens
         """
 
-        if(link in self.links):
+        if(link in self._links):
             # Link should always be present in network descriptor, since self.links is just a set of keys of that dict
-            if(self.network_descriptor[link]['type'] == 'STREAM'):
-                self.mqtt_client.subscribe_with_callback(link, lambda x: print(x))
+            if(self._links[link]['type'] == 'STREAM'):
+                self.mqtt_client.subscribe_with_callback(link, callback)
             else:
-                raise ValueError('Link is not type stream ({})'.format(self.network_descriptor[link]))
+                raise ValueError('Link is not type stream ({})'.format(self._links[link]))
         else:
             raise ValueError('Link was not present!')
 
     def unlisten(self, link):
-
-        if(link in self.links):
-            if(self.network_descriptor[link]['type'] == 'STREAM'):
+        if(link in self._links):
+            if(self._links[link]['type'] == 'STREAM'):
                 self.mqtt_client.unsubscribe(link)
             else:
-                raise ValueError('Link is not type STREAM ({})'.format(self.network_descriptor[link]))
+                raise ValueError('Link is not type STREAM ({})'.format(self._links[link]))
         else:
-            raise ValueError('Link was not present!')
+            raise ValueError('Link was not present.')
 
-    def get(self, link, retries=10, timeout=0.25):
+    def get(self, link, attempts=10, timeout=0.25):
 
-        if(link in self.links):
-            if(self.network_descriptor[link]['type'] == 'DATA'):
-                return self._make_request('GET', link, {}, retries=retries, timeout=timeout)
+        if(link in self._links):
+            if(self._links[link]['type'] == 'DATA'):
+                return self._make_request('GET', link, {}, attempts=attempts, timeout=timeout)
             else:
-                raise ValueError('Link is not type DATA ({})'.format(self.network_descriptor[link]))
+                raise ValueError('Link is not type DATA ({})'.format(self._links[link]))
         else:
-            raise ValueError('Link was not present. Try runnning discover on some nodes first')
+            raise ValueError('Link ({}) was not present.'.format(link))
 
     def stop(self):
         """Safely shuts down the vizier node."""
 
         super().stop()
+
+
+# CLI
+def main():
+
+    logging.basicConfig(level=logging.ERROR)
+
+    parser = argparse.ArgumentParser(prog='VIZIER QUERY')
+    parser.add_argument('--host', type=str, default='localhost', help='IP for the MQTT broker.')
+    parser.add_argument('--port', type=int, default=1884, help='Port for the MQTT broker.')
+    parser.add_argument('nodes', nargs='+', type=str, help='List of nodes for the MQTT broker.')
+    action_group = parser.add_mutually_exclusive_group(required=True)
+    action_group.add_argument('--get', nargs='+', help='Get data from the list of links.')
+    action_group.add_argument('--visualize', action='store_true', help='Visualize the network')
+    action_group.add_argument('--listen', nargs='+', help='Listen on the list of links')
+
+    args = parser.parse_args()
+
+    v = Vizier(args.host, args.port, args.nodes)
+    try:
+        v.start()
+    except Exception as e:
+        print(type(e), ':', e)
+        try:
+            v.stop()
+        except:
+            pass
+        return
+
+    if(args.get):
+        try:
+            for x in args.get:
+                print('Got ({0}) from link ({1})'.format(v.get(x), x))
+        except Exception as e:
+            print(type(e), ':', e)
+    elif(args.visualize):
+        v.visualize()
+    elif(args.listen):
+        try:
+            for x in args.listen:
+                v.listen(x, callback=lambda y: print(x, ': ', y))
+        except Exception as e:
+            print(type(e), ':', e)
+
+        print('ctrl+c to quit')
+
+        try:
+            while True:
+                time.sleep(5)
+        except KeyboardInterrupt as e:
+            for x in args.listen:
+                v.unlisten(x)
+    else:
+        print('No action supplied.')
+        parser.print_usage()
+
+    v.stop()
+
+
+if __name__ == '__main__':
+    main()
