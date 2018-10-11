@@ -15,6 +15,5 @@ def get_logger(level=logging.DEBUG, name='root'):
     """
     logging.basicConfig(format='%(asctime)s - %(levelname)s - %(module)s - %(message)s')
     logger = logging.getLogger(name)
-    logger = logging.getLogger('root')
     logger.setLevel(level)
     return logger

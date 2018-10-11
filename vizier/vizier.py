@@ -17,7 +17,7 @@ class Vizier(node.Node):
 
     """
 
-    def __init__(self, host, port, nodes, logger=None):
+    def __init__(self, host, port, nodes):
         """Initializes the vizier node.  Is able to inspect all nodes that are passed in.
 
         Args:
@@ -32,7 +32,7 @@ class Vizier(node.Node):
             "requests": []
         }
 
-        super().__init__(host, port, vizier_descriptor, logger=logger)
+        super().__init__(host, port, vizier_descriptor)
 
         # To contain future node descriptors.
         self._nodes = nodes
@@ -53,7 +53,7 @@ class Vizier(node.Node):
             timeout (double): Timeout for the GET requests
 
         """
-        self.mqtt_client.start()
+        self._mqtt_client.start()
 
         request_links = [x + '/node_descriptor' for x in self._nodes]
         # Paralellize GET requests
@@ -68,7 +68,7 @@ class Vizier(node.Node):
 
         # If not empty
         if(in_error):
-            self.logger.warning('Could not retrieve descriptor for nodes ({}).'.format(in_error))
+            self._logger.warning('Could not retrieve descriptor for nodes ({}).'.format(in_error))
 
         self._nodes_to_descriptors = dict({x: y['body'] for x, y in zip(self._nodes, results) if y is not None})
         self._expanded_descriptors = dict({x: utils.generate_links_from_descriptor(y) for x, y in self._nodes_to_descriptors.items()})
@@ -146,29 +146,29 @@ class Vizier(node.Node):
 
         if(link in self._links):
             if(self._links[link]['type'] != 'STREAM'):
-                self.logger.warning('Link ({0}) is not of type STREAM ({1})'.format(link, self._links[link]))
+                self._logger.warning('Link ({0}) is not of type STREAM ({1})'.format(link, self._links[link]))
         else:
-            self.logger.warning('Link ({}) not listed in retrieved node descriptors.'.format(link))
+            self._logger.warning('Link ({}) not listed in retrieved node descriptors.'.format(link))
 
-        self.mqtt_client.subscribe_with_callback(link, callback)
+        self._mqtt_client.subscribe_with_callback(link, callback)
 
     def unlisten(self, link):
 
         if(link in self._links):
             if(self._links[link]['type'] != 'STREAM'):
-                self.logger.warning('Link ({0}) is not of type STREAM ({1}).'.format(link, self._links[link]))
+                self._logger.warning('Link ({0}) is not of type STREAM ({1}).'.format(link, self._links[link]))
         else:
-            self.logger.warning('Link ({}) not listed in retrieved node descriptors.'.format(link))
+            self._logger.warning('Link ({}) not listed in retrieved node descriptors.'.format(link))
 
-        self.mqtt_client.unsubscribe(link)
+        self._mqtt_client.unsubscribe(link)
 
     def get(self, link, attempts=10, timeout=0.25):
 
         if(link in self._links):
             if(self._links[link]['type'] != 'DATA'):
-                self.logger.warning('Link ({0}) is not of type DATA ({1}).'.format(link, self._links[link]))
+                self._logger.warning('Link ({0}) is not of type DATA ({1}).'.format(link, self._links[link]))
         else:
-            self.logger.warning('Link ({}) not listed in retrieved node descriptors.'.format(link))
+            self._logger.warning('Link ({}) not listed in retrieved node descriptors.'.format(link))
 
         response = self._make_request('GET', link, {}, attempts=attempts, timeout=timeout)
         return response
