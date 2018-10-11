@@ -1,6 +1,13 @@
 import logging
+import threading
 
-def get_logger(level=logging.DEBUG, name='root'):
+_lock = threading.Lock()
+_logger = None
+_name = 'root'
+_level = logging.DEBUG
+
+
+def get_logger():
     """Returns a "global" logger.
 
     Args:
@@ -9,11 +16,22 @@ def get_logger(level=logging.DEBUG, name='root'):
 
     Examples:
         >>> get_logger()
-
         >>> get_logger(level=logging.DEBUG, name='root')
 
     """
-    logging.basicConfig(format='%(asctime)s - %(levelname)s - %(module)s - %(message)s')
-    logger = logging.getLogger(name)
-    logger.setLevel(level)
-    return logger
+
+    global _lock
+    global _logger
+
+    with _lock:
+        if(_logger is None):
+            formatter = logging.Formatter(fmt='%(asctime)s:%(levelname)s:%(module)s - %(message)s')
+            handler = logging.StreamHandler()
+            handler.setFormatter(fmt=formatter)
+            _logger = logging.getLogger(_name)
+            _logger.addHandler(handler)
+            _logger.setLevel(_level)
+            # Don't propogate up to root logger
+            _logger.propagate = False
+
+        return _logger
