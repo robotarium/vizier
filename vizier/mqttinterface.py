@@ -77,6 +77,8 @@ class MQTTInterface:
             self._id = 'python_mqtt_' + ''.join(random.choice(string.ascii_uppercase + string.ascii_lowercase + string.digits) for _ in range(30))
             self._client = mqtt.Client(client_id=self._id)
             self._client.on_message = self._on_message
+            # TODO: Don't hardcode 1
+            self._client.reconnect_delay_set(min_delay=1, max_delay=self._keep_alive)
 
             # Set up on_connect
             self._cdl = _CountDownLatch(1)

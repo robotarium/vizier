@@ -2,9 +2,8 @@ import vizier.mqttinterface as mqtt
 import concurrent.futures as futures
 import json
 import vizier.utils as utils
+import vizier.log as log
 
-# For logging
-import logging
 # HTTP codes for convenience later
 _http_codes = {'success': 200, 'not_found': 404}
 
@@ -58,14 +57,7 @@ class Node:
         # Channel on which requests are received
         self.request_channel = utils.create_request_link(self.end_point)
 
-        # Some logging definitions.
-        # TODO: This probably needs to change at some point.
-        if not logger:
-            logging.basicConfig(format='%(levelname)s %(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
-            logger = logging.getLogger(__name__)
-            logger.setLevel(logging.DEBUG)
-
-        self.logger = logger
+        self.logger = log.get_logger()
 
     def _make_request(self, method, link, body, request_id=None, attempts=15, timeout=0.25):
         """Makes a request for data on a particular topic.  The exact action depends on the specified method

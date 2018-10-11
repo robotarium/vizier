@@ -68,9 +68,9 @@ class Vizier(node.Node):
 
         # If not empty
         if(in_error):
-            raise ValueError('Could not retrieve descriptor for nodes ({}).'.format(in_error))
+            self.logger.warning('Could not retrieve descriptor for nodes ({}).'.format(in_error))
 
-        self._nodes_to_descriptors = dict({x: y['body'] for x, y in zip(self._nodes, results)})
+        self._nodes_to_descriptors = dict({x: y['body'] for x, y in zip(self._nodes, results) if y is not None})
         self._expanded_descriptors = dict({x: utils.generate_links_from_descriptor(y) for x, y in self._nodes_to_descriptors.items()})
         self._link_graph = dict({x: {'links': y[0], 'requests': y[1]} for x, y in self._expanded_descriptors.items()})
         self._links = dict({y: z for x in self._link_graph.values() for y, z in x['links'].items()})
@@ -145,32 +145,33 @@ class Vizier(node.Node):
         """
 
         if(link in self._links):
-            # Link should always be present in network descriptor, since self.links is just a set of keys of that dict
-            if(self._links[link]['type'] == 'STREAM'):
-                self.mqtt_client.subscribe_with_callback(link, callback)
-            else:
-                raise ValueError('Link is not type stream ({})'.format(self._links[link]))
+            if(self._links[link]['type'] != 'STREAM'):
+                self.logger.warning('Link ({0}) is not of type STREAM ({1})'.format(link, self._links[link]))
         else:
-            raise ValueError('Link was not present!')
+            self.logger.warning('Link ({}) not listed in retrieved node descriptors.'.format(link))
+
+        self.mqtt_client.subscribe_with_callback(link, callback)
 
     def unlisten(self, link):
+
         if(link in self._links):
-            if(self._links[link]['type'] == 'STREAM'):
-                self.mqtt_client.unsubscribe(link)
-            else:
-                raise ValueError('Link is not type STREAM ({})'.format(self._links[link]))
+            if(self._links[link]['type'] != 'STREAM'):
+                self.logger.warning('Link ({0}) is not of type STREAM ({1}).'.format(link, self._links[link]))
         else:
-            raise ValueError('Link was not present.')
+            self.logger.warning('Link ({}) not listed in retrieved node descriptors.'.format(link))
+
+        self.mqtt_client.unsubscribe(link)
 
     def get(self, link, attempts=10, timeout=0.25):
 
         if(link in self._links):
-            if(self._links[link]['type'] == 'DATA'):
-                return self._make_request('GET', link, {}, attempts=attempts, timeout=timeout)
-            else:
-                raise ValueError('Link is not type DATA ({})'.format(self._links[link]))
+            if(self._links[link]['type'] != 'DATA'):
+                self.logger.warning('Link ({0}) is not of type DATA ({1}).'.format(link, self._links[link]))
         else:
-            raise ValueError('Link ({}) was not present.'.format(link))
+            self.logger.warning('Link ({}) not listed in retrieved node descriptors.'.format(link))
+
+        response = self._make_request('GET', link, {}, attempts=attempts, timeout=timeout)
+        return response
 
     def stop(self):
         """Safely shuts down the vizier node."""
@@ -181,12 +182,12 @@ class Vizier(node.Node):
 # CLI
 def main():
 
-    logging.basicConfig(level=logging.ERROR)
+    logging.basicConfig(level=logging.INFO)
 
     parser = argparse.ArgumentParser(prog='VIZIER QUERY')
     parser.add_argument('--host', type=str, default='localhost', help='IP for the MQTT broker.')
     parser.add_argument('--port', type=int, default=1884, help='Port for the MQTT broker.')
-    parser.add_argument('nodes', nargs='+', type=str, help='List of nodes for the MQTT broker.')
+    parser.add_argument('nodes', nargs='*', type=str, help='List of nodes for the MQTT broker.')
     action_group = parser.add_mutually_exclusive_group(required=True)
     action_group.add_argument('--get', nargs='+', help='Get data from the list of links.')
     action_group.add_argument('--visualize', action='store_true', help='Visualize the network')
@@ -201,7 +202,7 @@ def main():
         print(type(e), ':', e)
         try:
             v.stop()
-        except:
+        except Exception:
             pass
         return
 
@@ -209,6 +210,7 @@ def main():
         try:
             for x in args.get:
                 print('Got ({0}) from link ({1})'.format(v.get(x), x))
+
         except Exception as e:
             print(type(e), ':', e)
     elif(args.visualize):
@@ -225,7 +227,7 @@ def main():
         try:
             while True:
                 time.sleep(5)
-        except KeyboardInterrupt as e:
+        except KeyboardInterrupt:
             for x in args.listen:
                 v.unlisten(x)
     else:
