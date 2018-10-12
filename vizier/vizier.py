@@ -5,6 +5,7 @@ import concurrent.futures as futures
 import argparse
 import logging
 import time
+import json
 
 
 # TODO: Split up some of these functions into network query vs graph operations
@@ -210,6 +211,7 @@ def main():
         try:
             for x in args.get:
                 print('Got ({0}) from link ({1})'.format(v.get(x), x))
+                print(json.loads(v.get(x)['body']))
 
         except Exception as e:
             print(type(e), ':', e)

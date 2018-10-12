@@ -86,7 +86,7 @@ class Node:
         self._expanded_links, self._requested_links = utils.generate_links_from_descriptor(self._node_descriptor)
 
         # By convention, the node descriptor is always on this link
-        self._expanded_links[self._end_point+'/node_descriptor'] = {'type': 'DATA', 'body': self._node_descriptor}
+        self._expanded_links[self._end_point+'/node_descriptor'] = {'type': 'DATA', 'body': json.dumps(self._node_descriptor)}
 
         # Channel on which requests are received
         self._request_channel = utils.create_request_link(self._end_point)
@@ -236,6 +236,12 @@ class Node:
             ValueError: If the provided link is not classified as DATA.
 
         """
+
+        # Ensure type of info
+        if(type(info) is not str):
+            error_msg = 'Type of info must be str was ({})'.format(type(info))
+            self._logger.error(error_msg)
+            raise ValueError(error_msg)
 
         # Ensure that the link has been specified by the node descriptor
 

@@ -14,10 +14,6 @@ def get_logger():
         level (optional): The logging level.
         name (optional): The name of the logger.
 
-    Examples:
-        >>> get_logger()
-        >>> get_logger(level=logging.DEBUG, name='root')
-
     """
 
     global _lock
