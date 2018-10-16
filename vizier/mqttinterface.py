@@ -89,6 +89,9 @@ class MQTTInterface:
 
             self._logger = log.get_logger()
 
+            self._stopped = False
+            self._started = False
+
     def _on_connect(self, client, userdata, flags, rc):
         """Called whenever the MQTT client connects to the MQTT broker.
 
@@ -203,6 +206,18 @@ class MQTTInterface:
     def start(self, timeout=None):
         """Handles starting the underlying MQTT client."""
 
+        if(self._started):
+            error_msg = 'Cannot call start more than once.'
+            self._logger.error(error_msg)
+            raise ValueError(error_msg)
+
+        if(self._stopped):
+            error_msg = 'Cannot call start after calling stop.'
+            self._logger.error(error_msg)
+            raise ValueError(error_msg)
+
+        self._started = True
+
         # Attempt to connect the client to the specified broker
         try:
             self._client.connect(self._host, self._port, self._keep_alive)
@@ -225,9 +240,14 @@ class MQTTInterface:
     def stop(self):
         """Handles stopping the MQTT client."""
 
-        # Stop reconnect thread
-        self._signal_reconnect.put(None)
-        self._reconnect_thread.join()
+        if(self._started):
+            # Stop reconnect thread
+            self._signal_reconnect.put(None)
+            self._reconnect_thread.join()
 
-        # Stops MQTT client
-        self._client.loop_stop()
+            # Stops MQTT client
+            self._client.loop_stop()
+        else:
+            error_msg = 'Cannot call stop before calling start.'
+            self._logger.error(error_msg)
+            raise ValueError(error_msg)
