@@ -66,12 +66,19 @@ class Vizier(node.Node):
         for i, r in enumerate(results):
             if r is None:
                 in_error.append(self._nodes[i])
+            else:
+                try:
+                    results[i] = json.loads(r['body'])
+                except Exception as e:
+                    in_error.append(self._nodes[i])
+                    print(repr(e))
+                    results[i] = None
 
         # If not empty
         if(in_error):
             self._logger.warning('Could not retrieve descriptor for nodes ({}).'.format(in_error))
 
-        self._nodes_to_descriptors = dict({x: y['body'] for x, y in zip(self._nodes, results) if y is not None})
+        self._nodes_to_descriptors = dict({x: y for x, y in zip(self._nodes, results) if y is not None})
         self._expanded_descriptors = dict({x: utils.generate_links_from_descriptor(y) for x, y in self._nodes_to_descriptors.items()})
         self._link_graph = dict({x: {'links': y[0], 'requests': y[1]} for x, y in self._expanded_descriptors.items()})
         self._links = dict({y: z for x in self._link_graph.values() for y, z in x['links'].items()})
@@ -90,7 +97,7 @@ class Vizier(node.Node):
             subgraph.node('dummy_'+x, shape='point', style='invis')
 
             for z in y['links']:
-                subgraph.node(z, label=z+' ('+y['links'][z]['type'].lower()+')')  # took out constraint=False
+                subgraph.node(z, label=z+' ('+y['links'][z]['type'].lower()+')', shape='box')  # took out constraint=False
 
             graph.subgraph(subgraph)
 
@@ -171,7 +178,9 @@ class Vizier(node.Node):
         else:
             self._logger.warning('Link ({}) not listed in retrieved node descriptors.'.format(link))
 
+        st = time.time()
         response = self._make_request('GET', link, {}, attempts=attempts, timeout=timeout)
+        print(time.time() - st)
         return response
 
     def stop(self):
@@ -211,7 +220,6 @@ def main():
         try:
             for x in args.get:
                 print('Got ({0}) from link ({1})'.format(v.get(x), x))
-                print(json.loads(v.get(x)['body']))
 
         except Exception as e:
             print(type(e), ':', e)
