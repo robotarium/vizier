@@ -200,7 +200,6 @@ class MQTTInterface:
 
         """
 
-        # TODO: Ensure that this function is actually thread-safe
         self._client.publish(channel, message)
 
     def start(self, timeout=None):
