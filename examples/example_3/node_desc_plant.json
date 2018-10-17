@@ -8,5 +8,5 @@
       "type" : "STREAM"
     }
   },
-  "requests" : ["controller/input"]
+  "requests" : [{"link": "controller/input", "required": false, "type": "STREAM"}]
 }

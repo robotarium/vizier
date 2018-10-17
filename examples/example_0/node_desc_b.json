@@ -8,5 +8,5 @@
       "type" : "STREAM"
     }
   },
-  "requests" : ["a/a_sub"]
+  "requests" : [{"link": "a/a_sub", "required": false, "type": "STREAM"}]
 }

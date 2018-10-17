@@ -8,5 +8,5 @@
       "type" : "STREAM"
     }
   },
-  "requests" : ["talker/mouth"]
+  "requests" : [{"link": "talker/mouth", "type": "STREAM", "required": false}]
 }

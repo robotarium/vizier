@@ -8,5 +8,5 @@
       "type": "STREAM"
     }
   },
-  "requests" : ["plant/state"]
+  "requests" : [{"link": "plant/state", "required": false, "type": "STREAM"}]
 }
