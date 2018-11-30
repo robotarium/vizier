@@ -60,7 +60,7 @@ class MQTTInterface:
 
     """
 
-    def __init__(self, port=1884, keep_alive=10, host="localhost"):
+    def __init__(self, port=1884, keep_alive=5, host="localhost"):
             # Set up MQTT client
             self._host = host
             self._port = port

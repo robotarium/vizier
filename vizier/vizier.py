@@ -173,7 +173,7 @@ class Vizier(node.Node):
     def get(self, link, attempts=10, timeout=0.25):
 
         if(link in self._links):
-            if(self._links[link]['type'] != 'DATA'):
+            if(self._links[link]['type'] is not 'DATA'):
                 self._logger.warning('Link ({0}) is not of type DATA ({1}).'.format(link, self._links[link]))
         else:
             self._logger.warning('Link ({}) not listed in retrieved node descriptors.'.format(link))
@@ -182,6 +182,16 @@ class Vizier(node.Node):
         response = self._make_request('GET', link, {}, attempts=attempts, timeout=timeout)
         print(time.time() - st)
         return response
+
+    def publish(self, link, msg):
+
+        if(link in self._links):
+            if(self._links[link]['type'] is not 'STREAM'):
+                self._logger.warning('Link ({0}) is not of type STREAM ({1}).'.format(link, self._links[link]))
+        else:
+            self._logger.warning('Link ({}) not listed in retrieved node descriptors.'.format(link))
+
+        self._mqtt_client.send_message(link, msg)
 
     def stop(self):
         """Safely shuts down the vizier node."""
@@ -202,6 +212,7 @@ def main():
     action_group.add_argument('--get', nargs='+', help='Get data from the list of links.')
     action_group.add_argument('--visualize', action='store_true', help='Visualize the network')
     action_group.add_argument('--listen', nargs='+', help='Listen on the list of links')
+    action_group.add_argument('--publish', nargs=2, help='Publish a value on a link')
 
     args = parser.parse_args()
 
@@ -240,6 +251,9 @@ def main():
         except KeyboardInterrupt:
             for x in args.listen:
                 v.unlisten(x)
+    elif(args.publish):
+        v.publish(args.publish[0], args.publish[1])
+
     else:
         print('No action supplied.')
         parser.print_usage()

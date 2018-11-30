@@ -16,8 +16,6 @@
 import sys
 import os
 import sphinx
-
-import sys
 from unittest.mock import MagicMock
 
 class Mock(MagicMock):
