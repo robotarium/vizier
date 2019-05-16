@@ -14,7 +14,8 @@ AUTHOR = 'Paul Glotfelter'
 
 # What packages are required for this module to be executed?
 REQUIRED = [
-    'paho-mqtt'
+    'paho-mqtt',
+    'graphviz'
 ]
 
 # The rest you shouldn't have to touch too much :)
