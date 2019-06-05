@@ -86,7 +86,7 @@ class Node:
         self._expanded_links, self._requested_links = utils.generate_links_from_descriptor(self._node_descriptor)
 
         # By convention, the node descriptor is always on this link
-        self._expanded_links[self._end_point+'/node_descriptor'] = {'type': 'DATA', 'body': json.dumps(self._node_descriptor)}
+        self._expanded_links[self._end_point + '/node_descriptor'] = {'type': 'DATA', 'body': json.dumps(self._node_descriptor)}
 
         # Channel on which requests are received
         self._request_channel = utils.create_request_link(self._end_point)
@@ -96,7 +96,7 @@ class Node:
 
         # Figure out which topics are providing etc...
         # Make sure to remove <node>/node_descriptor as a puttable topic, as this is dedicated
-        self.puttable_links = {x for x, y in self._expanded_links.items() if y['type'] == 'DATA'} - {self._end_point+'/node_descriptor'}
+        self.puttable_links = {x for x, y in self._expanded_links.items() if y['type'] == 'DATA'} - {self._end_point + '/node_descriptor'}
         self.publishable_links = {x for x, y in self._expanded_links.items() if y['type'] == 'STREAM'}
 
         # Parse out data/stream topics
@@ -121,7 +121,7 @@ class Node:
 
         # If we didn't get a request_id, create one
         if not request_id:
-            request_id = utils.create_message_id()
+            request_id = utils.create_message_id(self._end_point)
 
         # Set up request/response link for this request
         to_node = link.split('/')[0]
@@ -184,7 +184,7 @@ class Node:
         # TODO: Handle error in a more specific way
         if('id' not in decoded_message):
             # This is an error.  Return from the callback
-            self._logger.error("Request received without valid id")
+            self._logger.error('Request received without valid id')
             encountered_error = True
         else:
             message_id = decoded_message['id']
@@ -245,7 +245,7 @@ class Node:
 
         # Ensure that the link has been specified by the node descriptor
 
-        dedicated = self._end_point+'/node_descriptor'
+        dedicated = self._end_point + '/node_descriptor'
         if(link is dedicated):
             error_msg = 'Cannot PUT to dedicated link ({})'.format(dedicated)
             self._logger.error(error_msg)

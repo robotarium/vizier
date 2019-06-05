@@ -1,0 +1,12 @@
+{
+    "python.pythonPath": "/usr/bin/python3",
+    "python.linting.pylintArgs": [
+        "--extension-pkg-whitelist=cv2",
+    ],
+    "python.linting.flake8Args": [
+        "--ignore=E501",
+        "max-line-length = 160",
+    ],
+    "python.linting.flake8Enabled": true,
+    "python.linting.pylintEnabled": false,
+}

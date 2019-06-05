@@ -10,7 +10,7 @@ _descriptor_keys = {'type': True, 'body': False}
 GetResponseTypeError = ValueError
 
 
-def create_message_id():
+def create_message_id(node):
     """Creates a unique message id for a request.
 
     Returns:
@@ -18,7 +18,7 @@ def create_message_id():
 
     """
 
-    return binascii.hexlify(os.urandom(20)).decode()
+    return node + '/' + binascii.hexlify(os.urandom(20)).decode()
 
 
 def create_response(status, body, topic_type):
